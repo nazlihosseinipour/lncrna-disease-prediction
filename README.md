@@ -1,6 +1,3 @@
-# gip-kernel-similarity
-Toy example to compute Gaussian Interaction Profile (GIP) kernel similarity for lncRNAs and diseases based on a binary interaction matrix.
-
 # GIP Kernel Similarity – Toy Example
 
 This project demonstrates how to compute **Gaussian Interaction Profile (GIP) kernel similarity** for both lncRNAs and diseases using a simple toy matrix.
