@@ -50,8 +50,8 @@ dists_squared = (
     2 * dot_product
 )
 
-# Optional: turn into DataFrame for readability
-df_dists = pd.DataFrame(dists_squared, index=lncRNA_labels, columns=lncRNA_labels)
+#  turn into DataFrame for readability
+df_dists = pd.DataFrame(dists_squared, index=incRNA_lables, columns=incRNA_lables)
 
 print("\nSquared distances between lncRNAs:")
 print(df_dists)
