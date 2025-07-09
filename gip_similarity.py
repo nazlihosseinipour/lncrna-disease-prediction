@@ -80,6 +80,36 @@ def calculat_GIP_lncRNA_and_DIS(matrix ):
     return df_gip_dis , df_gip_lnc
 
 
+    #Y=UΣV^T
+    #Where:
+    #Y: your original matrix (e.g. lncRNA–disease matrix)
+    #U: matrix of left singular vectors (represents lncRNA features) 
+    #Σ: diagonal matrix with singular values (importance of each feature)
+    #V^T: transpose of right singular vectors (represents disease features)
+
+def extract_svd_features(matrix, k=None ): 
+
+    # Perform SVD decomposition
+    U, S, VT = np.linalg.svd(matrix)
+
+    # Optional: reduce to top-k components  IF k is given(dimensionality reduction)
+    if k is not None:
+        U = U[:, :k]
+        s = s[:k]
+        VT = VT[:k, :]
+
+    # Convert Σ Create diagonal matrix from singular values
+    S = np.diag(np.sqrt(s))  # use sqrt(s) to match paper logic
+
+
+    # Feature matrices
+    lncRNA_features = U @ S       # left side = lncRNA 
+    disease_features = S @ VT     # right side = disease
+
+    return lncRNA_features, disease_features
+
+
+
 
 
 def main (): 
@@ -116,6 +146,8 @@ def main ():
 
     print("\nGIP kernel similarity between diseases & incRNA :")
     print( calculat_GIP_lncRNA_and_DIS(A)) 
+
+    extract_svd_features(matrix, k = 64 )
 
 
 

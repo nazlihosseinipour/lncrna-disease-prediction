@@ -19,7 +19,7 @@ This is a first step in understanding how feature engineering works in lncRNA–
 2. Install the dependencies:
 
 ```bash
-pip install numpy pandas
+pip install -r requirements.txt
 ```
 3. Run the script:
 
