@@ -87,24 +87,27 @@ def calculat_GIP_lncRNA_and_DIS(matrix ):
     #Σ: diagonal matrix with singular values (importance of each feature)
     #V^T: transpose of right singular vectors (represents disease features)
 
-def extract_svd_features(matrix, k=None ): 
+def extract_svd_features(matrix, k) : 
 
     # Perform SVD decomposition
-    U, S, VT = np.linalg.svd(matrix)
+    #SVD tells us :"Hey, I found these patterns that explain the most important ways lncRNAs and diseases are related."
 
-    # Optional: reduce to top-k components  IF k is given(dimensionality reduction)
-    if k is not None:
-        U = U[:, :k]
-        s = s[:k]
-        VT = VT[:k, :]
+    matrix = np.array(matrix, dtype=float)
+    U, S, VT = np.linalg.svd(matrix, full_matrices=False)
+
+    #i needed to do this to be able to do the multiplication 
+    if k is not None: 
+     U_k = U[:, :k]       # keep first k columns of U
+     S_k = np.diag(S[:k]) # keep first k singular values and make them diagonal
+     VT_k = VT[:k, :]     # keep first k rows of VT
 
     # Convert Σ Create diagonal matrix from singular values
-    S = np.diag(np.sqrt(s))  # use sqrt(s) to match paper logic
+    s = np.diag(np.sqrt(S_k))  # use sqrt(s) to match paper logic (bcs usually it's used for both in the original formula so now it's one item we also do want half of it)
 
 
     # Feature matrices
-    lncRNA_features = U @ S       # left side = lncRNA 
-    disease_features = S @ VT     # right side = disease
+    lncRNA_features = U_k @ s       # left side = lncRNA 
+    disease_features = (s @ VT_k).T     # right side = disease
 
     return lncRNA_features, disease_features
 
@@ -116,7 +119,7 @@ def main ():
     np.random.seed(2)           #so we get each time the same random repeatable matrix 
     num_incRNA = 5              #number of fake different incRNA's 
     num_dis = 4                 #number of different fake Disseas's
-
+    
     A = np.random.randint(0, 2 , size=(num_incRNA, num_dis))#so here we create the matrix and we give :  0 or 1 (random tho)
     print("the toy matrix : incrRNA_dis (rows = incrRNA , col = Diseases );")
     print(A)
@@ -147,7 +150,7 @@ def main ():
     print("\nGIP kernel similarity between diseases & incRNA :")
     print( calculat_GIP_lncRNA_and_DIS(A)) 
 
-    extract_svd_features(matrix, k = 64 )
+    print(extract_svd_features(A, k = 64)) 
 
 
 
