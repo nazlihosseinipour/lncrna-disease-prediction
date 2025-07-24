@@ -1,0 +1,33 @@
+name: Optional checks
+
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  all-optional-checks-successful:
+    timeout-minutes: 120
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+          submodules: false
+      - name: Check that all tests succeeded
+        shell: bash
+        run: |
+            workflows=(
+                "R valgrind tests;r-valgrind"
+            )
+            for i in "${workflows[@]}"; do
+                workflow_name=${i%;*}
+                comment="The last reported status from workflow \"$workflow_name\" is failure."
+                comment="${comment} Commit fixes and rerun the workflow."
+                trigger_phrase=${i#*;}
+                python \
+                    "$GITHUB_WORKSPACE/.ci/get-workflow-status.py" \
+                    "$trigger_phrase" \
+                || { echo "${comment}"; exit 1; }
+            done

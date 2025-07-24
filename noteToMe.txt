@@ -1,0 +1,11 @@
+1. update the requirements folder : 
+#anaconda 25.1.1 
+also other libraries : 
+
+xgboost
+skrebate
+lightgbm => this one so crazy 
+
+i'm so confused w some of these libraries 
+
+2. update names => python convetions 
