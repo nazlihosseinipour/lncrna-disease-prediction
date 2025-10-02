@@ -4,7 +4,7 @@ from typing import Tuple, Union
 
 MatrixLike = Union[np.ndarray, pd.DataFrame]
 
-class RNAFeatures:
+class CrossFeatures:
     """
     Utilities for:
       - GIP kernels for lncRNAs (rows) and diseases (columns)
