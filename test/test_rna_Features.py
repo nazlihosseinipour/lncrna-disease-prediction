@@ -6,14 +6,10 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-# Try both class names so this works regardless of your naming
-try:
-    from rna_features import RNAFeatures as RF
-except (ImportError, AttributeError):
-    from rna_features import rna_features as RF
+import rna_features
 
 def test_kmer_and_rc_kmer():
-    rna = RF()
+    rna = rna_features.RnaFeatures()
     seqs = ["AUGC", "AAAAAA"]
 
     cols, X = rna.kmer_matrix(seqs, k=2, normalize=True, return_format="matrix")
@@ -29,7 +25,7 @@ def test_kmer_and_rc_kmer():
         assert math.isclose(sum(row), 1.0, rel_tol=1e-9, abs_tol=1e-9)
 
 def test_make_and_canonical_columns():
-    rna = RF()
+    rna = rna_features.RnaFeatures()
     cols1 = rna.make_columns(1)
     cols2 = rna.make_columns(2)
     cols3 = rna.make_columns(3)
@@ -41,7 +37,7 @@ def test_make_and_canonical_columns():
     assert 0 < len(canon2) < 16
 
 def test_compositions_match_kmer_special_cases():
-    rna = RF()
+    rna = rna_features.RnaFeatures()
     seqs = ["AUGCUUAGC"]
 
     _, mono = rna.mono_composition_matrix(seqs, normalize=True, return_format="matrix")
@@ -57,7 +53,7 @@ def test_compositions_match_kmer_special_cases():
     assert np.allclose(tri[0], k3[0])
 
 def test_zcurve_and_gap_features():
-    rna = RF()
+    rna = rna_features.RnaFeatures()
     seqs = ["AUGCUUAGC"]
 
     cols, X = rna.zcurve_matrix(seqs, normalize=True, return_format="matrix")
