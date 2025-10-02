@@ -44,7 +44,6 @@ class RnaFeatures:
         return sorted(reps)
 
     # -------------------- row builders --------------------
-
     @classmethod
     def _kmer_row(cls, seq: str, columns: List[str], *, normalize: bool = True) -> List[float]:
         """One sequence -> one row aligned to `columns` (non-canonical)."""
