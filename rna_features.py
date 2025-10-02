@@ -280,7 +280,7 @@ class RnaFeatures:
         sample_ids: Optional[Iterable[str]] = None,
     ):
         """
-        Unified entry point mirroring the README numbering (1..12).
+        Unified entry point mirroring monoDiKGap
         Implemented here: 1,2,7,8,9,10,11,12.
         """
         if method_id == 1:

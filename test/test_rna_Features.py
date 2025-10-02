@@ -1,13 +1,11 @@
-# test/test_rna_features.py
 import sys, os, math, numpy as np
-
 # ensure project root is importable
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 import rna_features
-
+#test 1
 def test_kmer_and_rc_kmer():
     rna = rna_features.RnaFeatures()
     seqs = ["AUGC", "AAAAAA"]
