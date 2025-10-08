@@ -4,6 +4,8 @@ class util:
 
     ALPHABET = ("A", "C", "G", "U")
     COMP_TRANS = str.maketrans({"A": "U", "U": "A", "C": "G", "G": "C"})
+    DINUCS = ["".join(p) for p in itertools.product(ALPHABET, repeat=2)]
+
 
     @staticmethod
     def _clean(seq: str) -> str:
@@ -66,3 +68,14 @@ class util:
         cnt = Counter(min(s[i:i + k], cls.revcomp(s[i:i + k])) for i in range(W))
         row = [cnt.get(col, 0) for col in columns]
         return row if not normalize else [v / W for v in row]
+    
+
+    """Dinucleotide feature helpers"""""
+    
+
+    def _dinuc_properties(seq: str, props: Dict[str, List[float]]):
+        """Turn a sequence into a list of property vectors per dinucleotide."""
+        s = _clean(seq)
+        n = len(s)
+        dinucs = [s[i:i+2] for i in range(n-1)]
+        return [props[d] for d in dinucs if d in props]

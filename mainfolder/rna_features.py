@@ -16,12 +16,6 @@ class RnaFeatures:
 # gotta import the functions that i've already imported bcs rn i'm not sure how items like : make_columns gets used while they are in another functions bcs we do sth like cls.make_columns() which i'm not sure how it happens ngl 
 
 
-#also where is these functions , i'm sure i created them did i delted them by mistake?? :  
-# Pseudo dinucleotide composition	3
-# Dinucleotide-based auto covariance	4
-# Dinucleotide-based cross covariance	5
-# Dinucleotide-based auto-cross covariance	6
-
 
 # make all of these features look better this one looks really bad rn you gotta put and add like exact explanation of what each item does you dont have to explain the how just what it tdoe and like what is @given and then @returns what and what we will use that for? 
     
@@ -45,6 +39,7 @@ class RnaFeatures:
             df.insert(0, "sample_id", list(sample_ids))
         return cols, df  # type: ignore[return-value]
 
+
     # (2) Reverse-complement (canonical) K-mer
     @classmethod
     def rc_kmer_matrix(
@@ -64,11 +59,121 @@ class RnaFeatures:
         if sample_ids is not None:
             df.insert(0, "sample_id", list(sample_ids))
         return cols, df  # type: ignore[return-value]
+   
 
-    #(3)
-    #(4) 
-    #(5)  
-    #(6) 
+    # (3) Pseudo dinucleotide composition (PseDNC)
+    def psednc_matrix(seqs, *, props: Dict[str, List[float]], lam: int, w: float = 0.5,
+                    return_format="matrix", sample_ids=None):
+        cols = DINUCS + [f"theta_{i+1}" for i in range(lam)]
+        rows = []
+
+        for seq in seqs:
+            s = _clean(seq)
+            n = len(s)
+            if n < 2:
+                rows.append([0.0]*len(cols))
+                continue
+            dinucs = [s[i:i+2] for i in range(n-1)]
+            comp = Counter(dinucs)
+            comp_vec = [comp.get(d, 0)/(n-1) for d in DINUCS]
+
+            # correlation factors
+            theta = []
+            for lag in range(1, lam+1):
+                vals = _dinuc_properties(seq, props)
+                if len(vals) <= lag: 
+                    theta.append(0.0)
+                else:
+                    # average correlation of property vectors with lag
+                    corr = np.mean([
+                        np.dot(vals[i], vals[i+lag]) for i in range(len(vals)-lag)
+                    ])
+                    theta.append(corr)
+
+            # combine
+            denom = 1 + w*sum(theta)
+            pse = [(c/denom) for c in comp_vec] + [(w*t/denom) for t in theta]
+            rows.append(pse)
+
+        if return_format == "matrix":
+            return cols, rows
+        return pd.DataFrame(rows, columns=cols)
+
+
+    # (4) Dinucleotide auto covariance (DAC)
+    def di_auto_cov_matrix(seqs, *, props: Dict[str, List[float]], L: int,
+                        return_format="matrix", sample_ids=None):
+        M = len(next(iter(props.values())))
+        cols = [f"AUTO_p{m}_lag{l}" for m in range(M) for l in range(1, L+1)]
+        rows = []
+
+        for seq in seqs:
+            vals = _dinuc_properties(seq, props)
+            n = len(vals)
+            if n == 0:
+                rows.append([0.0]*len(cols))
+                continue
+            features = []
+            for m in range(M):
+                mean_m = np.mean([v[m] for v in vals])
+                for lag in range(1, L+1):
+                    if n <= lag:
+                        features.append(0.0)
+                    else:
+                        ac = np.mean([(vals[i][m]-mean_m)*(vals[i+lag][m]-mean_m) for i in range(n-lag)])
+                        features.append(ac)
+            rows.append(features)
+
+        if return_format == "matrix":
+            return cols, rows
+        return pd.DataFrame(rows, columns=cols)
+
+
+    # (5) Dinucleotide cross covariance (DCC)
+    def di_cross_cov_matrix(seqs, *, props: Dict[str, List[float]], L: int,
+                            return_format="matrix", sample_ids=None):
+        M = len(next(iter(props.values())))
+        cols = [f"CROSS_p{m1}_p{m2}_lag{l}" for m1 in range(M) for m2 in range(M) if m1!=m2 for l in range(1, L+1)]
+        rows = []
+
+        for seq in seqs:
+            vals = _dinuc_properties(seq, props)
+            n = len(vals)
+            if n == 0:
+                rows.append([0.0]*len(cols))
+                continue
+            features = []
+            for m1 in range(M):
+                for m2 in range(M):
+                    if m1 == m2: continue
+                    mean1 = np.mean([v[m1] for v in vals])
+                    mean2 = np.mean([v[m2] for v in vals])
+                    for lag in range(1, L+1):
+                        if n <= lag:
+                            features.append(0.0)
+                        else:
+                            cc = np.mean([(vals[i][m1]-mean1)*(vals[i+lag][m2]-mean2) for i in range(n-lag)])
+                            features.append(cc)
+            rows.append(features)
+
+        if return_format == "matrix":
+            return cols, rows
+        return pd.DataFrame(rows, columns=cols)
+
+
+    # (6) Dinucleotide auto-cross covariance (DACC)
+    def di_acc_matrix(seqs, *, props: Dict[str, List[float]], L: int,
+                    return_format="matrix", sample_ids=None):
+        # Combination of auto and cross
+        cols_auto, X_auto = di_auto_cov_matrix(seqs, props=props, L=L, return_format="matrix")
+        cols_cross, X_cross = di_cross_cov_matrix(seqs, props=props, L=L, return_format="matrix")
+        cols = cols_auto + cols_cross
+        rows = [a+b for a, b in zip(X_auto, X_cross)]
+
+        if return_format == "matrix":
+            return cols, rows
+        return pd.DataFrame(rows, columns=cols)
+
     # (7) Nucleic acid composition (mono)
     @classmethod
     def mono_composition_matrix(
