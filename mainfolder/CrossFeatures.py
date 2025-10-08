@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from typing import Tuple, Union
+# here i gotta rewrite the gip in a way that acts like oop so that i can kinda reuse it or myabe create and entire claas for it and here call the class but for now this is the reminder , what i have is good but make it public API worthy 
 
 MatrixLike = Union[np.ndarray, pd.DataFrame]
 
