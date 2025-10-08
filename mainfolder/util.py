@@ -1,4 +1,6 @@
-#i wanna have here sth like util sort function sort of vibe which i can put the helper functions 
+from collections import Counter
+from typing import List, Dict
+import itertools
 
 class util: 
 
@@ -7,11 +9,10 @@ class util:
     DINUCS = ["".join(p) for p in itertools.product(ALPHABET, repeat=2)]
 
 
-    @staticmethod
     def _clean(seq: str) -> str:
         """Uppercase and map T->U so DNA-style inputs still work in RNA mode."""
         return seq.upper().replace("T", "U")
-
+    
     @classmethod
     def revcomp(cls, s: str) -> str:
         return s.translate(cls.COMP_TRANS)[::-1]
@@ -72,10 +73,13 @@ class util:
 
     """Dinucleotide feature helpers"""""
     
-
+#??????? idk why i'm getting yellow line under _clean what is wrong with it?????????????? why is it no known ???????????###################################################################################################
     def _dinuc_properties(seq: str, props: Dict[str, List[float]]):
         """Turn a sequence into a list of property vectors per dinucleotide."""
         s = _clean(seq)
         n = len(s)
         dinucs = [s[i:i+2] for i in range(n-1)]
         return [props[d] for d in dinucs if d in props]
+    
+
+    

@@ -18,6 +18,21 @@ class RnaFeatures:
 
 
 # make all of these features look better this one looks really bad rn you gotta put and add like exact explanation of what each item does you dont have to explain the how just what it tdoe and like what is @given and then @returns what and what we will use that for? 
+
+
+# comeback and fix these stuff 
+    """"
+    so apparently the previous code of the github is better than my code in below mentioned ways (volgens chatgpt) , idk what it means but gotta comeback to it : 
+
+
+      Completeness: The giant script implements the missing methods you pointed out earlier — especially PseDNC, DAC, DCC, DACC (3–6 in your table). In your current rna_features.py, those are just raise NotImplementedError(...).
+
+    Phyche index handling: It has support for reading a CSV (phy.csv) of physicochemical properties, normalizing them, and applying them in PseDNC/DAC/DCC/DACC. Your version doesn’t yet include that.
+
+    Multiple modes (series vs parallel factors): The big one allows both parallel and series correlation factors for PseDNC, while your version is simplified.-> what  is gonna happen parrallel i'm so confused? oh wait nvm 
+    """
+
+
     
     # (1) K-mer
     @classmethod
