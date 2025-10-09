@@ -6,6 +6,8 @@ import pandas as pd
 
 MatrixLike = Union[np.ndarray, pd.DataFrame]
 
+# gotta create an extractor here too 
+
 class DiseaseFeatures:
     """
     Minimal utilities for:
@@ -28,7 +30,7 @@ class DiseaseFeatures:
 
 
 
-    # ---------- 1) Wang’s method on terms ----------
+    #  13) Wang’s method on terms -
     def _S_values(self, term: str) -> Dict[str, float]:
         """S(term)=1; propagate up parents multiplying by edge_weight; keep max path contribution."""
         if term in self._s_cache:
@@ -61,7 +63,7 @@ class DiseaseFeatures:
 
 
 
-    # ---------- 1a) Disease × Disease similarity via BMA over term sets ----------
+    #  14a) Disease × Disease similarity via BMA over term sets 
     def disease_similarity_bma(
         self,
         disease_to_terms: Dict[str, Iterable[str]],
@@ -100,7 +102,7 @@ class DiseaseFeatures:
 
         return pd.DataFrame(K, index=diseases, columns=diseases)
 
-    # ---------- 2) LFS (lncRNA Functional Similarity) from Y and disease similarity ----------
+    #  15) LFS (lncRNA Functional Similarity) from Y and disease similarity
     def lfs_from_Y(
         self,
         Y: MatrixLike,

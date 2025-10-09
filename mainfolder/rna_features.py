@@ -351,6 +351,8 @@ class RnaFeatures:
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ):
+###### gotta update it forgot number 3 till 7 ############################################
+    ################################    ################################    ################################    ################################    ################################    ################################
         """
         Unified entry point mirroring monoDiKGap
         Implemented here: 1,2,7,8,9,10,11,12.
