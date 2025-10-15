@@ -2,6 +2,7 @@ from collections import Counter
 from typing import Iterable, List, Dict, Optional, Literal, Tuple
 import itertools
 import util
+import mainfolder.main as main
 
 try:
     import pandas as pd
@@ -10,12 +11,13 @@ except ImportError:
 
 # gotta create a contructor for this calss too 
 
-class RnaFeatures:
-# fix asap : 
-# wait i've never talked about what are and what is the cls actually?? 
-# gotta import the functions that i've already imported bcs rn i'm not sure how items like : make_columns gets used while they are in another functions bcs we do sth like cls.make_columns() which i'm not sure how it happens ngl 
+class RnaFeatures (FeatureExtractor):
 
-
+#argparse
+ 
+#embeddings
+ 
+ 
 
 # make all of these features look better this one looks really bad rn you gotta put and add like exact explanation of what each item does you dont have to explain the how just what it tdoe and like what is @given and then @returns what and what we will use that for? 
 

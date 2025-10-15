@@ -1,14 +1,6 @@
-# this is gonna be the parent class 
 
-
-
-
-
-# so here we get the data and based on what it is we call the right class and on each claass we've gto the extractor right? and there we call the extractor 
-
-
-#gotta double check if wrong counts the first number 
-# gotta add extractor function to rna_features and corssFeatrs class
+# i gotta create of have py file that will call all the features and there it would also load the data and then call all the yk features there and and for each of them and then for each class then we would have sth like that that would help us have the data for eahch of the classes i guess created and i think i gotta do that and extract sth like that for each of them happening so that is actually sth that i should create 
+#i'm not quite srue if that should happen in .py or a jupyter notbook exactly so that is what i am gonna do 
 
 from rna_features import RnaFeatures
 from disease_features import DiseaseFeatures
