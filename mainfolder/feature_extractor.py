@@ -5,8 +5,10 @@
 from rna_features import RnaFeatures
 from disease_features import DiseaseFeatures
 from CrossFeatures import CrossFeatures
+from feature_extractor import FeatureExtractor
 
 class FeatureExtractor:
+    
     def __init__(self):
         self.rna = RnaFeatures()
         self.dis = DiseaseFeatures()

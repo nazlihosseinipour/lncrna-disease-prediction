@@ -1,25 +1,35 @@
 from typing import Iterable, List, Dict, Optional, Literal, Tuple
+from feature_extractor import FeatureExtractor
 import pandas as pd
 import numpy as np
 from collections import Counter
 import itertools
+
+from util import (
+    ALPHABET, DINUCS, _clean, revcomp,
+    make_columns, make_canonical_columns,
+    _kmer_row, _canonical_kmer_row, _dinuc_properties,
+)
+
+
 
 try:
     import pandas as pd
 except ImportError:
     pd = None
 
-# gotta create a contructor for this calss too 
 
-class RnaFeatures (FeatureExtractor):
 
-#argparse
+class RnaFeatures(FeatureExtractor):
+
+#add comments to it like documentations 
+
+
  
 #embeddings
  
- 
-
-# make all of these features look better this one looks really bad rn you gotta put and add like exact explanation of what each item does you dont have to explain the how just what it tdoe and like what is @given and then @returns what and what we will use that for? 
+    def __init__ (self): 
+        pass
 
 
 # comeback and fix these stuff 
@@ -47,8 +57,8 @@ class RnaFeatures (FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ) -> Tuple[List[str], List[List[float]]]:
-        cols = cls.make_columns(k)
-        rows = [cls._kmer_row(seq, cols, normalize=normalize) for seq in seqs]
+        cols = make_columns(k)
+        rows = [_kmer_row(seq, cols, normalize=normalize) for seq in seqs]
         if return_format == "matrix" or pd is None:
             return cols, rows
         df = pd.DataFrame(rows, columns=cols)
@@ -68,8 +78,8 @@ class RnaFeatures (FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ) -> Tuple[List[str], List[List[float]]]:
-        cols = cls.make_canonical_columns(k)
-        rows = [cls._canonical_kmer_row(seq, cols, normalize=normalize) for seq in seqs]
+        cols = make_canonical_columns(k)
+        rows = [_canonical_kmer_row(seq, cols, normalize=normalize) for seq in seqs]
         if return_format == "matrix" or pd is None:
             return cols, rows
         df = pd.DataFrame(rows, columns=cols)
@@ -201,10 +211,10 @@ class RnaFeatures (FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ) -> Tuple[List[str], List[List[float]]]:
-        cols = list(cls.ALPHABET)
+        cols = list(ALPHABET)
         rows: List[List[float]] = []
         for seq in seqs:
-            s = cls._clean(seq)
+            s = _clean(seq)
             cnt = Counter(s)
             row = [cnt.get(b, 0) for b in cols]
             if normalize:
@@ -255,7 +265,7 @@ class RnaFeatures (FeatureExtractor):
         cols = ["ZC_x", "ZC_y", "ZC_z"]
         rows: List[List[float]] = []
         for seq in seqs:
-            s = cls._clean(seq)
+            s = _clean(seq)
             c = Counter(s)
             A = c.get("A", 0)
             Cn = c.get("C", 0)
@@ -287,14 +297,14 @@ class RnaFeatures (FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ) -> Tuple[List[str], List[List[float]]]:
-        labels = [f"{a}_{b}_gap{k_gap}" for a in cls.ALPHABET for b in cls.ALPHABET]
+        labels = [f"{a}_{b}_gap{k_gap}" for a in ALPHABET for b in ALPHABET]
         rows: List[List[float]] = []
         for seq in seqs:
-            s = cls._clean(seq)
+            s = _clean(seq)
             n = len(s)
             W = max(n - k_gap - 1, 0)
             cnt = Counter((s[i], s[i + k_gap + 1]) for i in range(W))
-            row = [cnt.get((a, b), 0) for a in cls.ALPHABET for b in cls.ALPHABET]
+            row = [cnt.get((a, b), 0) for a in ALPHABET for b in ALPHABET]
             if normalize and W > 0:
                 row = [v / W for v in row]
             rows.append(row)
@@ -316,15 +326,15 @@ class RnaFeatures (FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ) -> Tuple[List[str], List[List[float]]]:
-        dinucs = ["".join(p) for p in itertools.product(cls.ALPHABET, repeat=2)]
-        labels = [f"{a}_{d}_gap{k_gap}" for a in cls.ALPHABET for d in dinucs]
+        dinucs = ["".join(p) for p in itertools.product(ALPHABET, repeat=2)]
+        labels = [f"{a}_{d}_gap{k_gap}" for a in ALPHABET for d in dinucs]
         rows: List[List[float]] = []
         for seq in seqs:
-            s = cls._clean(seq)
+            s = _clean(seq)
             n = len(s)
             W = max(n - k_gap - 2, 0)
             cnt = Counter((s[i], s[i + k_gap + 1: i + k_gap + 3]) for i in range(W))
-            row = [cnt.get((a, d), 0) for a in cls.ALPHABET for d in dinucs]
+            row = [cnt.get((a, d), 0) for a in ALPHABET for d in dinucs]
             if normalize and W > 0:
                 row = [v / W for v in row]
             rows.append(row)

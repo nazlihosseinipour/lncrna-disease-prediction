@@ -3,12 +3,13 @@ from typing import Dict, Iterable, List, Set, Tuple, Union, Optional
 from collections import defaultdict, deque
 import numpy as np
 import pandas as pd
+from feature_extractor import FeatureExtractor
 
 MatrixLike = Union[np.ndarray, pd.DataFrame]
 
 # gotta create an extractor here too 
 
-class DiseaseFeatures:
+class DiseaseFeatures(FeatureExtractor):
     """
     Minimal utilities for:
       1) Wang semantic similarity on a disease DAG (MeSH-like)
