@@ -7,9 +7,11 @@ import itertools
 from mainfolder.utils import (
     ALPHABET, DINUCS, _clean, 
     make_columns, make_canonical_columns,
-    _kmer_row, _canonical_kmer_row, _dinuc_properties,
-)
-from validators import require_seqs, require_k, require_return_format, require_sample_ids_len, require_lam , require_weight , require_L , require_k_gap
+    _kmer_row, _canonical_kmer_row, _dinuc_properties)
+from validators import (
+    require_seqs, require_k, require_return_format, 
+    require_sample_ids_len, require_lam , k_gap,
+    require_weight , require_L , require_k_gap )
 
 class RnaFeatures(FeatureModule):
 
@@ -34,7 +36,7 @@ class RnaFeatures(FeatureModule):
 
     @staticmethod
     def _clean_and_check(x: str) -> str:
-        from util import _clean  # local import avoids cycles
+        from utils import _clean  # local import avoids cycles
         if not isinstance(x, str):
             raise TypeError("each sequence must be a string.")
         s = _clean(x)

@@ -6,6 +6,11 @@ ALPHABET = ("A", "C", "G", "U")
 COMP_TRANS = str.maketrans({"A": "U", "U": "A", "C": "G", "G": "C"})
 DINUCS = ["".join(p) for p in itertools.product(ALPHABET, repeat=2)]
 
+def revcomp(s: str) -> str:
+    """Reverse-complement in RNA alphabet (A<->U, C<->G)."""
+    return _clean(s).translate(COMP_TRANS)[::-1]
+
+
 def _clean(seq: str) -> str:
     """Uppercase and map T->U so DNA-style inputs still work in RNA mode."""
     return seq.upper().replace("T", "U")
@@ -28,8 +33,6 @@ def make_canonical_columns(k: int) -> List[str]:
     }
     return sorted(reps)
 
-
-""" row builders """
 def _kmer_row(seq: str, columns: List[str], *, normalize: bool = True) -> List[float]:
     """One sequence -> one row aligned to `columns` (non-canonical)."""
     if not columns:
