@@ -1,4 +1,4 @@
-from feature_extractor import FeatureExtractor
+from feature_module import FeatureModule
 import numpy as np
 import pandas as pd
 from typing import Tuple, Union
@@ -8,7 +8,7 @@ from typing import Tuple, Union
 
 MatrixLike = Union[np.ndarray, pd.DataFrame]
 
-class CrossFeatures(FeatureExtractor):
+class CrossFeatures(FeatureModule):
     """
     Utilities for:
       - GIP kernels for lncRNAs (rows) and diseases (columns)
@@ -106,3 +106,18 @@ class CrossFeatures(FeatureExtractor):
         disease_features = (S_sqrt @ VT_k).T   # right side = disease (m × k)
 
         return lncRNA_features, disease_features
+    
+
+    @classmethod
+    def extract(cls, method_id, *args, **kwargs):
+        """
+        16 -> GIP kernels (returns K_lnc, K_dis)
+        17 -> SVD split (returns lncRNA_features, disease_features)
+        """
+        if method_id == 16:
+            # expecting: matrix (lnc×dis), gamma_lnc=None, gamma_dis=None
+            return cls.calculate_gip_lncRNA_and_dis(*args, **kwargs)
+        if method_id == 17:
+            # expecting: matrix (lnc×dis), k (rank)
+            return cls.extract_svd_features(*args, **kwargs)
+        raise ValueError(f"CrossFeatures method id {method_id} not implemented.")

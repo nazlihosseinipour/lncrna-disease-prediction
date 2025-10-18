@@ -1,5 +1,5 @@
+from typing import Iterable, Dict, List, Type
 from collections import Counter
-from typing import List, Dict
 import itertools
 
 ALPHABET = ("A", "C", "G", "U")
@@ -9,11 +9,6 @@ DINUCS = ["".join(p) for p in itertools.product(ALPHABET, repeat=2)]
 def _clean(seq: str) -> str:
     """Uppercase and map T->U so DNA-style inputs still work in RNA mode."""
     return seq.upper().replace("T", "U")
-    
-
-def revcomp(s: str) -> str:
-    return s.translate(COMP_TRANS)[::-1]
-    
 
 """ columns generators """
 def make_columns(k: int) -> List[str]:
@@ -65,7 +60,6 @@ def _canonical_kmer_row(seq: str, columns: List[str], *, normalize: bool = True)
     return row if not normalize else [v / W for v in row]
     
 
-"""Dinucleotide feature helpers"""""
 def _dinuc_properties(seq: str, props: Dict[str, List[float]]) -> List[List[float]]:
     """
     Turn a sequence into a list of property vectors per dinucleotide.
@@ -80,4 +74,22 @@ def _dinuc_properties(seq: str, props: Dict[str, List[float]]) -> List[List[floa
         return []
 
     dinucs = [s[i:i+2] for i in range(n-1)]
-    return [props[d] for d in dinucs if d in props]; 
+    return [props[d] for d in dinucs if d in props]
+
+
+def describe_methods(cls: Type) -> str:
+    method_map: Dict[int, str] = getattr(cls, "METHOD_MAP", {})
+    if not method_map:
+        return f"{cls.__name__}: no methods registered."
+    pairs = [f"{mid} -> {name}" for mid, name in sorted(method_map.items())]
+    return f"{cls.__name__} methods: " + ", ".join(pairs)
+
+def ensure_methods(cls: Type, required: Iterable[int]) -> None:
+    method_map: Dict[int, str] = getattr(cls, "METHOD_MAP", {})
+    missing = [mid for mid in required if mid not in method_map]
+    if missing:
+        have: List[int] = sorted(method_map.keys())
+        raise AssertionError(
+            f"{cls.__name__} is missing method ids: {missing}. "
+            f"Currently has: {have}"
+        )

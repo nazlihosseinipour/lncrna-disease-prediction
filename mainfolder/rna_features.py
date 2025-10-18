@@ -1,51 +1,49 @@
 from typing import Iterable, List, Dict, Optional, Literal, Tuple
-from feature_extractor import FeatureExtractor
+from feature_module import FeatureModule
 import pandas as pd
 import numpy as np
 from collections import Counter
 import itertools
-
-from util import (
-    ALPHABET, DINUCS, _clean, revcomp,
+from mainfolder.utils import (
+    ALPHABET, DINUCS, _clean, 
     make_columns, make_canonical_columns,
     _kmer_row, _canonical_kmer_row, _dinuc_properties,
 )
+from validators import require_seqs, require_k, require_return_format, require_sample_ids_len, require_lam , require_weight , require_L , require_k_gap
 
-
-
-try:
-    import pandas as pd
-except ImportError:
-    pd = None
-
-
-
-class RnaFeatures(FeatureExtractor):
+class RnaFeatures(FeatureModule):
 
 #add comments to it like documentations 
-
-
- 
-#embeddings
+#embeddings fo the neural networks 
  
     def __init__ (self): 
         pass
 
+    METHOD_MAP = {
+        1: "kmer_matrix", 2: "rc_kmer_matrix",
+        3: "psednc_matrix", 4: "di_auto_cov_matrix",
+        5: "di_cross_cov_matrix", 6: "di_acc_matrix",
+        7: "mono_composition_matrix", 8: "di_composition_matrix",
+        9: "tri_composition_matrix", 10: "zcurve_matrix",
+        11: "monoMonoKGap_matrix", 12: "monoDiKGap_matrix",
+    }
 
-# comeback and fix these stuff 
-    """"
-    so apparently the previous code of the github is better than my code in below mentioned ways (volgens chatgpt) , idk what it means but gotta comeback to it : 
+    @classmethod
+    def extract(cls, method_id, *args, **kwargs):
+        return super().extract(method_id, *args, **kwargs)
+
+    @staticmethod
+    def _clean_and_check(x: str) -> str:
+        from util import _clean  # local import avoids cycles
+        if not isinstance(x, str):
+            raise TypeError("each sequence must be a string.")
+        s = _clean(x)
+        bad = [ch for ch in s if ch not in "ACGU"]
+        if bad:
+            raise ValueError(f"sequence contains invalid characters after cleaning: {sorted(set(bad))}")
+        return s
 
 
-      Completeness: The giant script implements the missing methods you pointed out earlier — especially PseDNC, DAC, DCC, DACC (3–6 in your table). In your current rna_features.py, those are just raise NotImplementedError(...).
-
-    Phyche index handling: It has support for reading a CSV (phy.csv) of physicochemical properties, normalizing them, and applying them in PseDNC/DAC/DCC/DACC. Your version doesn’t yet include that.
-
-    Multiple modes (series vs parallel factors): The big one allows both parallel and series correlation factors for PseDNC, while your version is simplified.-> what  is gonna happen parrallel i'm so confused? oh wait nvm 
-    """
-
-
-    
     # (1) K-mer
     @classmethod
     def kmer_matrix(
@@ -57,14 +55,24 @@ class RnaFeatures(FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ) -> Tuple[List[str], List[List[float]]]:
+        
+        require_return_format(return_format)
+        require_seqs(seqs)
+        require_k(k)
+        # materialize once (safe for generators), then check content
+        seqs = [cls._clean_and_check(x) for x in seqs]
+        if not seqs:
+            raise ValueError("seqs is empty.")
+        require_sample_ids_len(sample_ids, len(seqs))
+
         cols = make_columns(k)
         rows = [_kmer_row(seq, cols, normalize=normalize) for seq in seqs]
-        if return_format == "matrix" or pd is None:
+        if return_format == "matrix":
             return cols, rows
         df = pd.DataFrame(rows, columns=cols)
         if sample_ids is not None:
             df.insert(0, "sample_id", list(sample_ids))
-        return cols, df  # type: ignore[return-value]
+        return cols, df  
 
 
     # (2) Reverse-complement (canonical) K-mer
@@ -78,128 +86,266 @@ class RnaFeatures(FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ) -> Tuple[List[str], List[List[float]]]:
+        
+        require_return_format(return_format)
+        require_seqs(seqs)
+        require_k(k)
+        seqs = [cls._clean_and_check(x) for x in seqs]
+        if not seqs:
+            raise ValueError("seqs is empty.")
+        require_sample_ids_len(sample_ids, len(seqs))
+    
         cols = make_canonical_columns(k)
         rows = [_canonical_kmer_row(seq, cols, normalize=normalize) for seq in seqs]
-        if return_format == "matrix" or pd is None:
+        if return_format == "matrix":
             return cols, rows
         df = pd.DataFrame(rows, columns=cols)
         if sample_ids is not None:
             df.insert(0, "sample_id", list(sample_ids))
-        return cols, df  # type: ignore[return-value]
+        return cols, df  
    
-
     # (3) Pseudo dinucleotide composition (PseDNC)
-    def psednc_matrix(seqs, *, props: Dict[str, List[float]], lam: int, w: float = 0.5,
-                    return_format="matrix", sample_ids=None):
+    @staticmethod
+    def psednc_matrix(
+        seqs: Iterable[str],
+        *,
+        props: Dict[str, List[float]],
+        lam: int,
+        w: float = 0.5,
+        return_format: Literal["matrix", "dataframe"] = "matrix",
+        sample_ids: Optional[Iterable[str]] = None,
+    ):
+        require_return_format(return_format)
+        require_seqs(seqs)
+        require_lam(lam)
+        require_weight(w)
+        # props checks (RNA-specific): non-empty, uniform lengths, valid keys
+        if not props:
+            raise ValueError("props cannot be empty for PseDNC.")
+        lens = {len(v) for v in props.values()}
+        if len(lens) != 1:
+            raise ValueError("all property vectors in props must have the same length.")
+        bad = [k for k in props.keys() if len(k) != 2 or any(ch not in "ACGU" for ch in k)]
+        if bad:
+            raise ValueError(f"props has invalid dinucleotide keys: {bad[:5]}...")
+        # seqs
+        seqs = [RnaFeatures._clean_and_check(x) for x in seqs]
+        if not seqs:
+            raise ValueError("seqs is empty.")
+        if lam <= 0: raise ValueError("lam must be >= 1")
+
         cols = DINUCS + [f"theta_{i+1}" for i in range(lam)]
-        rows = []
+        rows: List[List[float]] = []
 
         for seq in seqs:
             s = _clean(seq)
             n = len(s)
             if n < 2:
-                rows.append([0.0]*len(cols))
+                rows.append([0.0] * len(cols))
                 continue
-            dinucs = [s[i:i+2] for i in range(n-1)]
-            comp = Counter(dinucs)
-            comp_vec = [comp.get(d, 0)/(n-1) for d in DINUCS]
 
-            # correlation factors
-            theta = []
-            for lag in range(1, lam+1):
-                vals = _dinuc_properties(seq, props)
-                if len(vals) <= lag: 
+            # composition (normalized)
+            dinucs = [s[i:i+2] for i in range(n - 1)]
+            comp = Counter(dinucs)
+            comp_vec = [comp.get(d, 0) / (n - 1) for d in DINUCS]
+
+            # property vectors per dinucleotide (once, outside lag loop)
+            vals = _dinuc_properties(seq, props)  # list[list[float]] of length n-1
+            theta: List[float] = []
+            for lag in range(1, lam + 1):
+                if len(vals) <= lag:
                     theta.append(0.0)
                 else:
-                    # average correlation of property vectors with lag
-                    corr = np.mean([
-                        np.dot(vals[i], vals[i+lag]) for i in range(len(vals)-lag)
-                    ])
+                    corr = float(np.mean([
+                        float(np.dot(vals[i], vals[i + lag]))
+                        for i in range(len(vals) - lag)
+                    ]))
                     theta.append(corr)
 
-            # combine
-            denom = 1 + w*sum(theta)
-            pse = [(c/denom) for c in comp_vec] + [(w*t/denom) for t in theta]
+            # combine with weighting
+            denom = 1.0 + w * sum(theta)
+            pse = [(c / denom) for c in comp_vec] + [(w * t / denom) for t in theta]
             rows.append(pse)
 
         if return_format == "matrix":
             return cols, rows
-        return pd.DataFrame(rows, columns=cols)
-
+        df = pd.DataFrame(rows, columns=cols)
+        if sample_ids is not None:
+            df.insert(0, "sample_id", list(sample_ids))
+        return cols, df
 
     # (4) Dinucleotide auto covariance (DAC)
-    def di_auto_cov_matrix(seqs, *, props: Dict[str, List[float]], L: int,
-                        return_format="matrix", sample_ids=None):
-        M = len(next(iter(props.values())))
-        cols = [f"AUTO_p{m}_lag{l}" for m in range(M) for l in range(1, L+1)]
-        rows = []
+    @staticmethod
+    def di_auto_cov_matrix(
+        seqs: Iterable[str],
+        *,
+        props: Dict[str, List[float]],
+        L: int,
+        return_format: Literal["matrix", "dataframe"] = "matrix",
+        sample_ids: Optional[Iterable[str]] = None,
+    ):
+        require_return_format(return_format)
+        require_seqs(seqs)
+        require_L(L)
+        if not props:
+            raise ValueError("props cannot be empty for DAC.")
+        lens = {len(v) for v in props.values()}
+        if len(lens) != 1:
+            raise ValueError("all property vectors in props must have the same length.")
+        bad = [k for k in props.keys() if len(k) != 2 or any(ch not in "ACGU" for ch in k)]
+        if bad:
+            raise ValueError(f"props has invalid dinucleotide keys: {bad[:5]}...")
+        seqs = [RnaFeatures._clean_and_check(x) for x in seqs]
+        if not seqs:
+            raise ValueError("seqs is empty.")
+        
+        M = len(next(iter(props.values())))  # number of properties per dinuc
+        cols = [f"AUTO_p{m}_lag{l}" for m in range(M) for l in range(1, L + 1)]
+        rows: List[List[float]] = []
 
         for seq in seqs:
-            vals = _dinuc_properties(seq, props)
+            vals = _dinuc_properties(seq, props)  # list[list[float]]
             n = len(vals)
             if n == 0:
-                rows.append([0.0]*len(cols))
+                rows.append([0.0] * len(cols))
                 continue
-            features = []
+
+            features: List[float] = []
             for m in range(M):
-                mean_m = np.mean([v[m] for v in vals])
-                for lag in range(1, L+1):
+                mean_m = float(np.mean([v[m] for v in vals]))
+                for lag in range(1, L + 1):
                     if n <= lag:
                         features.append(0.0)
                     else:
-                        ac = np.mean([(vals[i][m]-mean_m)*(vals[i+lag][m]-mean_m) for i in range(n-lag)])
+                        ac = float(np.mean([
+                            (vals[i][m] - mean_m) * (vals[i + lag][m] - mean_m)
+                            for i in range(n - lag)
+                        ]))
                         features.append(ac)
             rows.append(features)
 
         if return_format == "matrix":
             return cols, rows
-        return pd.DataFrame(rows, columns=cols)
+        df = pd.DataFrame(rows, columns=cols)
+        if sample_ids is not None:
+            df.insert(0, "sample_id", list(sample_ids))
+        return cols, df
 
 
+    
     # (5) Dinucleotide cross covariance (DCC)
-    def di_cross_cov_matrix(seqs, *, props: Dict[str, List[float]], L: int,
-                            return_format="matrix", sample_ids=None):
+    @staticmethod
+    def di_cross_cov_matrix(
+        seqs: Iterable[str],
+        *,
+        props: Dict[str, List[float]],
+        L: int,
+        return_format: Literal["matrix", "dataframe"] = "matrix",
+        sample_ids: Optional[Iterable[str]] = None,
+    ):
+        require_return_format(return_format)
+        require_seqs(seqs)
+        require_L(L)
+        if not props:
+            raise ValueError("props cannot be empty for DCC.")
+        lens = {len(v) for v in props.values()}
+        if len(lens) != 1:
+            raise ValueError("all property vectors in props must have the same length.")
+        bad = [k for k in props.keys() if len(k) != 2 or any(ch not in "ACGU" for ch in k)]
+        if bad:
+            raise ValueError(f"props has invalid dinucleotide keys: {bad[:5]}...")
+        seqs = [RnaFeatures._clean_and_check(x) for x in seqs]
+        if not seqs:
+            raise ValueError("seqs is empty.")
+        if not props:
+            raise ValueError("props cannot be empty for DCC.")
+        
         M = len(next(iter(props.values())))
-        cols = [f"CROSS_p{m1}_p{m2}_lag{l}" for m1 in range(M) for m2 in range(M) if m1!=m2 for l in range(1, L+1)]
-        rows = []
+        cols = [
+            f"CROSS_p{m1}_p{m2}_lag{l}"
+            for m1 in range(M) for m2 in range(M) if m1 != m2
+            for l in range(1, L + 1)
+        ]
+        rows: List[List[float]] = []
 
         for seq in seqs:
             vals = _dinuc_properties(seq, props)
             n = len(vals)
             if n == 0:
-                rows.append([0.0]*len(cols))
+                rows.append([0.0] * len(cols))
                 continue
-            features = []
+
+            features: List[float] = []
+            means = [float(np.mean([v[m] for v in vals])) for m in range(M)]
             for m1 in range(M):
+                mean1 = means[m1]
                 for m2 in range(M):
-                    if m1 == m2: continue
-                    mean1 = np.mean([v[m1] for v in vals])
-                    mean2 = np.mean([v[m2] for v in vals])
-                    for lag in range(1, L+1):
+                    if m1 == m2:
+                        continue
+                    mean2 = means[m2]
+                    for lag in range(1, L + 1):
                         if n <= lag:
                             features.append(0.0)
                         else:
-                            cc = np.mean([(vals[i][m1]-mean1)*(vals[i+lag][m2]-mean2) for i in range(n-lag)])
+                            cc = float(np.mean([
+                                (vals[i][m1] - mean1) * (vals[i + lag][m2] - mean2)
+                                for i in range(n - lag)
+                            ]))
                             features.append(cc)
             rows.append(features)
 
         if return_format == "matrix":
             return cols, rows
-        return pd.DataFrame(rows, columns=cols)
+        df = pd.DataFrame(rows, columns=cols)
+        if sample_ids is not None:
+            df.insert(0, "sample_id", list(sample_ids))
+        return cols, df
 
+    # (6) Dinucleotide auto-cross covariance (DACC = DAC + DCC)
+    @staticmethod
+    def di_acc_matrix(
+        seqs: Iterable[str],
+        *,
+        props: Dict[str, List[float]],
+        L: int,
+        return_format: Literal["matrix", "dataframe"] = "matrix",
+        sample_ids: Optional[Iterable[str]] = None,
+    ):
+        
+        require_return_format(return_format)
+        require_seqs(seqs)
+        require_L(L)
+        if not props:
+            raise ValueError("props cannot be empty for DACC.")
+        lens = {len(v) for v in props.values()}
+        if len(lens) != 1:
+            raise ValueError("all property vectors in props must have the same length.")
+        bad = [k for k in props.keys() if len(k) != 2 or any(ch not in "ACGU" for ch in k)]
+        if bad:
+            raise ValueError(f"props has invalid dinucleotide keys: {bad[:5]}...")
+        seqs = [RnaFeatures._clean_and_check(x) for x in seqs]
+        if not seqs:
+            raise ValueError("seqs is empty.")        
+        
 
-    # (6) Dinucleotide auto-cross covariance (DACC)
-    def di_acc_matrix(seqs, *, props: Dict[str, List[float]], L: int,
-                    return_format="matrix", sample_ids=None):
-        # Combination of auto and cross
-        cols_auto, X_auto = di_auto_cov_matrix(seqs, props=props, L=L, return_format="matrix")
-        cols_cross, X_cross = di_cross_cov_matrix(seqs, props=props, L=L, return_format="matrix")
+        # call siblings explicitly via the class, and request matrix shape
+        cols_auto, X_auto = RnaFeatures.di_auto_cov_matrix(
+            seqs, props=props, L=L, return_format="matrix"
+        )
+        cols_cross, X_cross = RnaFeatures.di_cross_cov_matrix(
+            seqs, props=props, L=L, return_format="matrix"
+        )
+
         cols = cols_auto + cols_cross
-        rows = [a+b for a, b in zip(X_auto, X_cross)]
+        rows = [a + b for a, b in zip(X_auto, X_cross)]
 
         if return_format == "matrix":
             return cols, rows
-        return pd.DataFrame(rows, columns=cols)
+        df = pd.DataFrame(rows, columns=cols)
+        if sample_ids is not None:
+            df.insert(0, "sample_id", list(sample_ids))
+        return cols, df
+
 
     # (7) Nucleic acid composition (mono)
     @classmethod
@@ -211,6 +357,15 @@ class RnaFeatures(FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ) -> Tuple[List[str], List[List[float]]]:
+        
+        require_return_format(return_format)
+        require_seqs(seqs)
+        require_k_gap(k_gap)
+        seqs = [cls._clean_and_check(x) for x in seqs]
+        if not seqs:
+            raise ValueError("seqs is empty.")
+        require_sample_ids_len(sample_ids, len(seqs))
+
         cols = list(ALPHABET)
         rows: List[List[float]] = []
         for seq in seqs:
@@ -221,12 +376,13 @@ class RnaFeatures(FeatureExtractor):
                 total = len(s) or 1
                 row = [v / total for v in row]
             rows.append(row)
-        if return_format == "matrix" or pd is None:
+        if return_format == "matrix":
             return cols, rows
         df = pd.DataFrame(rows, columns=cols)
         if sample_ids is not None:
             df.insert(0, "sample_id", list(sample_ids))
         return cols, df  # type: ignore[return-value]
+    
 
     # (8) Di-nucleotide composition (k=2)
     @classmethod
@@ -238,7 +394,15 @@ class RnaFeatures(FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ):
+        require_return_format(return_format)
+        require_seqs(seqs)
+        seqs = [cls._clean_and_check(x) for x in seqs]
+        if not seqs:
+            raise ValueError("seqs is empty.")
+        require_sample_ids_len(sample_ids, len(seqs))
+
         return cls.kmer_matrix(seqs, 2, normalize=normalize, return_format=return_format, sample_ids=sample_ids)
+
 
     # (9) Tri-nucleotide composition (k=3)
     @classmethod
@@ -250,6 +414,13 @@ class RnaFeatures(FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ):
+        require_return_format(return_format)
+        require_seqs(seqs)
+        seqs = [cls._clean_and_check(x) for x in seqs]
+        if not seqs:
+            raise ValueError("seqs is empty.")
+        require_sample_ids_len(sample_ids, len(seqs))    
+
         return cls.kmer_matrix(seqs, 3, normalize=normalize, return_format=return_format, sample_ids=sample_ids)
 
     # (10) z-curve (3 features)
@@ -262,6 +433,14 @@ class RnaFeatures(FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ) -> Tuple[List[str], List[List[float]]]:
+        
+        require_return_format(return_format)
+        require_seqs(seqs)
+        seqs = [cls._clean_and_check(x) for x in seqs]
+        if not seqs:
+            raise ValueError("seqs is empty.")
+        require_sample_ids_len(sample_ids, len(seqs))
+
         cols = ["ZC_x", "ZC_y", "ZC_z"]
         rows: List[List[float]] = []
         for seq in seqs:
@@ -279,7 +458,7 @@ class RnaFeatures(FeatureExtractor):
                 rows.append([x / n, y / n, z / n])
             else:
                 rows.append([x, y, z])
-        if return_format == "matrix" or pd is None:
+        if return_format == "matrix":
             return cols, rows
         df = pd.DataFrame(rows, columns=cols)
         if sample_ids is not None:
@@ -297,6 +476,15 @@ class RnaFeatures(FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ) -> Tuple[List[str], List[List[float]]]:
+        
+        require_return_format(return_format)
+        require_seqs(seqs)
+        require_k_gap(k_gap)
+        seqs = [cls._clean_and_check(x) for x in seqs]
+        if not seqs:
+            raise ValueError("seqs is empty.")
+        require_sample_ids_len(sample_ids, len(seqs))
+
         labels = [f"{a}_{b}_gap{k_gap}" for a in ALPHABET for b in ALPHABET]
         rows: List[List[float]] = []
         for seq in seqs:
@@ -308,7 +496,7 @@ class RnaFeatures(FeatureExtractor):
             if normalize and W > 0:
                 row = [v / W for v in row]
             rows.append(row)
-        if return_format == "matrix" or pd is None:
+        if return_format == "matrix":
             return labels, rows
         df = pd.DataFrame(rows, columns=labels)
         if sample_ids is not None:
@@ -326,6 +514,15 @@ class RnaFeatures(FeatureExtractor):
         return_format: Literal["matrix", "dataframe"] = "matrix",
         sample_ids: Optional[Iterable[str]] = None,
     ) -> Tuple[List[str], List[List[float]]]:
+        
+        require_return_format(return_format)
+        require_seqs(seqs)
+        require_k_gap(k_gap)
+        seqs = [cls._clean_and_check(x) for x in seqs]
+        if not seqs:
+            raise ValueError("seqs is empty.")
+        require_sample_ids_len(sample_ids, len(seqs))
+
         dinucs = ["".join(p) for p in itertools.product(ALPHABET, repeat=2)]
         labels = [f"{a}_{d}_gap{k_gap}" for a in ALPHABET for d in dinucs]
         rows: List[List[float]] = []
@@ -338,60 +535,9 @@ class RnaFeatures(FeatureExtractor):
             if normalize and W > 0:
                 row = [v / W for v in row]
             rows.append(row)
-        if return_format == "matrix" or pd is None:
+        if return_format == "matrix":
             return labels, rows
         df = pd.DataFrame(rows, columns=labels)
         if sample_ids is not None:
             df.insert(0, "sample_id", list(sample_ids))
         return labels, df  # type: ignore[return-value]
-
-    # -------------------- dispatcher --------------------
-
-    @classmethod
-    def extract_rna_features(
-        cls,
-        method_id: int,
-        seqs: Iterable[str],
-        *,
-        k: Optional[int] = None,
-        normalize: bool = True,
-        k_gap: Optional[int] = None,
-        props: Optional[Dict[str, List[float]]] = None,  # placeholders for 3-6
-        lam: Optional[int] = None,
-        w: float = 0.5,
-        L: Optional[int] = None,
-        return_format: Literal["matrix", "dataframe"] = "matrix",
-        sample_ids: Optional[Iterable[str]] = None,
-    ):
-###### gotta update it forgot number 3 till 7 ############################################
-    ################################    ################################    ################################    ################################    ################################    ################################
-        """
-        Unified entry point mirroring monoDiKGap
-        Implemented here: 1,2,7,8,9,10,11,12.
-        """
-        if method_id == 1:
-            if k is None:
-                raise ValueError("k is required for k-mer.")
-            return cls.kmer_matrix(seqs, k, normalize=normalize, return_format=return_format, sample_ids=sample_ids)
-        if method_id == 2:
-            if k is None:
-                raise ValueError("k is required for reverse-complement k-mer.")
-            return cls.rc_kmer_matrix(seqs, k, normalize=normalize, return_format=return_format, sample_ids=sample_ids)
-        if method_id == 7:
-            return cls.mono_composition_matrix(seqs, normalize=normalize, return_format=return_format, sample_ids=sample_ids)
-        if method_id == 8:
-            return cls.di_composition_matrix(seqs, normalize=normalize, return_format=return_format, sample_ids=sample_ids)
-        if method_id == 9:
-            return cls.tri_composition_matrix(seqs, normalize=normalize, return_format=return_format, sample_ids=sample_ids)
-        if method_id == 10:
-            return cls.zcurve_matrix(seqs, normalize=True, return_format=return_format, sample_ids=sample_ids)
-        if method_id == 11:
-            if k_gap is None:
-                raise ValueError("k_gap is required for monoMonoKGap.")
-            return cls.monoMonoKGap_matrix(seqs, k_gap, normalize=normalize, return_format=return_format, sample_ids=sample_ids)
-        if method_id == 12:
-            if k_gap is None:
-                raise ValueError("k_gap is required for monoDiKGap.")
-            return cls.monoDiKGap_matrix(seqs, k_gap, normalize=normalize, return_format=return_format, sample_ids=sample_ids)
-
-        raise ValueError(f"RNA method id {method_id} not implemented in this module.")

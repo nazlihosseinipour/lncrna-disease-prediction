@@ -3,13 +3,13 @@ from typing import Dict, Iterable, List, Set, Tuple, Union, Optional
 from collections import defaultdict, deque
 import numpy as np
 import pandas as pd
-from feature_extractor import FeatureExtractor
+from feature_module import FeatureModule
 
 MatrixLike = Union[np.ndarray, pd.DataFrame]
 
 # gotta create an extractor here too 
 
-class DiseaseFeatures(FeatureExtractor):
+class DiseaseFeatures(FeatureModule):
     """
     Minimal utilities for:
       1) Wang semantic similarity on a disease DAG (MeSH-like)
@@ -20,6 +20,13 @@ class DiseaseFeatures(FeatureExtractor):
       - disease_to_terms: dict {disease_id: iterable of MeSH terms}
       - Y: lncRNA×disease association matrix (rows=lncRNAs, cols=diseases)
     """
+
+    METHOD_MAP = {
+        13: "Wang's feature " , 
+        14:"Disease × Disease similarity " , 
+        15: "LFS", 
+
+    }
 
     def __init__(self, edges_child_parent: Iterable[Tuple[str, str]], edge_weight: float = 0.8):
         # Build parent adjacency for Wang propagation
