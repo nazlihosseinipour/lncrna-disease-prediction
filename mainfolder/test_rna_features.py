@@ -1,11 +1,8 @@
-import sys, os, math, numpy as np
-# ensure project root is importable
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
-
-import mainfolder.rna_features as rna_features
+import  math
+import numpy as np
+from mainfolder.rna_features import rna_features
 #test 1
+
 def test_kmer_and_rc_kmer():
     rna = rna_features.RnaFeatures()
     seqs = ["AUGC", "AAAAAA"]
@@ -17,6 +14,7 @@ def test_kmer_and_rc_kmer():
         assert math.isclose(sum(row), 1.0, rel_tol=1e-9, abs_tol=1e-9)
 
     cols_rc, X_rc = rna.rc_kmer_matrix(seqs, k=2, normalize=True, return_format="matrix")
+    
     assert len(cols_rc) < 16
     assert len(X_rc) == 2
     for row in X_rc:

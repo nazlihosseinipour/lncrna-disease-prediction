@@ -15,6 +15,20 @@ class CrossFeatures(FeatureModule):
       - SVD-based feature split (left/right)
     """
 
+    def __init__(self):
+        super().__init__()
+
+
+    METHOD_MAP = {
+        16: "GIP kernels for lncRNAs (rows) and diseases (columns) " , 
+        17: "SVD-based ",
+    }
+
+    @classmethod
+    def extract(cls, method_id, *args, **kwargs):
+        return super().extract(method_id, *args, **kwargs)
+
+
     @staticmethod
     def _as_array_and_labels(M: MatrixLike):
         """

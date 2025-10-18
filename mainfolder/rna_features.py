@@ -19,7 +19,7 @@ class RnaFeatures(FeatureModule):
 #embeddings fo the neural networks 
  
     def __init__ (self): 
-        pass
+        super().__init__()
 
     METHOD_MAP = {
         1: "kmer_matrix", 2: "rc_kmer_matrix",

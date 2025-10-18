@@ -19,7 +19,6 @@ class FeatureModule(ABC):
 
     METHOD_MAP: Dict[int, str] = {}
 
-    # ---- Introspection helpers ----
     @classmethod
     def supported_methods(cls) -> List[int]:
         """List of supported method IDs for this module."""
@@ -51,7 +50,6 @@ class FeatureModule(ABC):
                 "but that callable does not exist on the class."
             )
 
-        # Works for @staticmethod or @classmethod targets
         return func(*args, **kwargs)
 
 
