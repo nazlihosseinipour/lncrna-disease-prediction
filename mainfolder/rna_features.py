@@ -2,13 +2,13 @@ from typing import Iterable, List, Dict, Optional, Literal, Tuple
 from feature_module import FeatureModule
 import pandas as pd,  numpy as np , itertools
 from collections import Counter
-from mainfolder.utils import (
+from utils import (
     ALPHABET, DINUCS, _clean, 
     make_columns, make_canonical_columns,
     _kmer_row, _canonical_kmer_row, _dinuc_properties)
 from validators import (
     require_seqs, require_k, require_return_format, 
-    require_sample_ids_len, require_lam , k_gap,
+    require_sample_ids_len, require_lam , 
     require_weight , require_L , require_k_gap )
 
 class RnaFeatures(FeatureModule):
@@ -358,7 +358,6 @@ class RnaFeatures(FeatureModule):
         
         require_return_format(return_format)
         require_seqs(seqs)
-        require_k_gap(k_gap)
         seqs = [cls._clean_and_check(x) for x in seqs]
         if not seqs:
             raise ValueError("seqs is empty.")
