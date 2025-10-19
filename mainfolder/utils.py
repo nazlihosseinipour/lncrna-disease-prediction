@@ -1,6 +1,7 @@
 from typing import Iterable, Dict, List, Type
 from collections import Counter
 import itertools
+import torch
 
 
 ALPHABET = ("A", "C", "G", "U")
