@@ -122,16 +122,3 @@ class CrossFeatures(FeatureModule):
         return lncRNA_features, disease_features
     
 
-    @classmethod
-    def extract(cls, method_id, *args, **kwargs):
-        """
-        16 -> GIP kernels (returns K_lnc, K_dis)
-        17 -> SVD split (returns lncRNA_features, disease_features)
-        """
-        if method_id == 16:
-            # expecting: matrix (lnc×dis), gamma_lnc=None, gamma_dis=None
-            return cls.calculate_gip_lncRNA_and_dis(*args, **kwargs)
-        if method_id == 17:
-            # expecting: matrix (lnc×dis), k (rank)
-            return cls.extract_svd_features(*args, **kwargs)
-        raise ValueError(f"CrossFeatures method id {method_id} not implemented.")

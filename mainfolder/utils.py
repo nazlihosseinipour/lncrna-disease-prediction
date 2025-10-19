@@ -2,6 +2,7 @@ from typing import Iterable, Dict, List, Type
 from collections import Counter
 import itertools
 
+
 ALPHABET = ("A", "C", "G", "U")
 COMP_TRANS = str.maketrans({"A": "U", "U": "A", "C": "G", "G": "C"})
 DINUCS = ["".join(p) for p in itertools.product(ALPHABET, repeat=2)]
@@ -96,3 +97,32 @@ def ensure_methods(cls: Type, required: Iterable[int]) -> None:
             f"{cls.__name__} is missing method ids: {missing}. "
             f"Currently has: {have}"
         )
+
+def _device() -> str:
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+def _dtype(device: str):
+    return torch.float16 if device == "cuda" else torch.float32
+
+def _to_rna(seq: str) -> str:
+    """Normalize sequence to RNA alphabet (T->U, uppercase)."""
+    return seq.upper().replace("T", "U")
+
+def _mean_pool(last_hidden_state: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    mask = attention_mask.unsqueeze(-1)  # [B,L,1]
+    summed = (last_hidden_state * mask).sum(dim=1)  # [B,H]
+    counts = mask.sum(dim=1).clamp(min=1)           # [B,1]
+    return summed / counts
+
+def _chunks(seq: str, window: int, stride: int) -> List[str]:
+    if window <= 0 or stride <= 0:
+        return [seq]
+    out = []
+    n = len(seq)
+    if n == 0:
+        return [""]
+    for i in range(0, max(1, n - window + 1), stride):
+        out.append(seq[i:i+window])
+    if not out:
+        out = [seq]
+    return out

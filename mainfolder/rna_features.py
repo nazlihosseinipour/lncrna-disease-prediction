@@ -1,9 +1,7 @@
 from typing import Iterable, List, Dict, Optional, Literal, Tuple
 from feature_module import FeatureModule
-import pandas as pd
-import numpy as np
+import pandas as pd,  numpy as np , itertools
 from collections import Counter
-import itertools
 from mainfolder.utils import (
     ALPHABET, DINUCS, _clean, 
     make_columns, make_canonical_columns,
@@ -15,9 +13,7 @@ from validators import (
 
 class RnaFeatures(FeatureModule):
 
-#add comments to it like documentations 
-#embeddings fo the neural networks 
- 
+
     def __init__ (self): 
         super().__init__()
 
