@@ -1,65 +1,74 @@
 
 
 
-so apparently gotta fix these stuff : 
+# so apparently gotta fix these stuff : 
 
 
-    """"
-    so apparently the previous code of the github is better than my code in below mentioned ways (volgens chatgpt) , idk what it means but gotta comeback to it : 
+#     """"
+#     so apparently the previous code of the github is better than my code in below mentioned ways (volgens chatgpt) , idk what it means but gotta comeback to it : 
 
 
-      Completeness: The giant script implements the missing methods you pointed out earlier — especially PseDNC, DAC, DCC, DACC (3–6 in your table). In your current rna_features.py, those are just raise NotImplementedError(...).
+#       Completeness: The giant script implements the missing methods you pointed out earlier — especially PseDNC, DAC, DCC, DACC (3–6 in your table). In your current rna_features.py, those are just raise NotImplementedError(...).
 
-    Phyche index handling: It has support for reading a CSV (phy.csv) of physicochemical properties, normalizing them, and applying them in PseDNC/DAC/DCC/DACC. Your version doesn’t yet include that.
+#     Phyche index handling: It has support for reading a CSV (phy.csv) of physicochemical properties, normalizing them, and applying them in PseDNC/DAC/DCC/DACC. Your version doesn’t yet include that.
 
-    Multiple modes (series vs parallel factors): The big one allows both parallel and series correlation factors for PseDNC, while your version is simplified.-> what  is gonna happen parrallel i'm so confused? oh wait nvm 
-    """
-
-
-
+#     Multiple modes (series vs parallel factors): The big one allows both parallel and series correlation factors for PseDNC, while your version is simplified.-> what  is gonna happen parrallel i'm so confused? oh wait nvm 
+#     """
 
 
 
 
 
-Bring in the “core math” from the big script into your util.py.
-
-Functions like normalize_index, parallel_cor_function, series_cor_function, make_ac_vector, make_cc_vector can live in util.py.
-
-Your rna_features.py can then just call them.
-
-Implement the missing 3–6 methods properly in rna_features.py.
-For example:
-
-from util import make_pseknc_vector, make_ac_vector, make_cc_vector
-
-def psednc_matrix(seqs, props, lam, w=0.05, return_format="matrix", sample_ids=None):
-    vecs = make_pseknc_vector(seqs, lam, w, k=2, phyche_value=props)
-    cols = [f"PseDNC_{i}" for i in range(len(vecs[0]))]
-    return cols, vecs
 
 
-Do the same for DAC, DCC, DACC using make_ac_vector / make_cc_vector.
 
-Drop sys.argv / CLI logic.
+# Bring in the “core math” from the big script into your util.py.
 
-That’s useful for standalone command-line tools, but since you’re aiming to run ML pipelines in Jupyter, keep everything as functions.
+# Functions like normalize_index, parallel_cor_function, series_cor_function, make_ac_vector, make_cc_vector can live in util.py.
 
-FASTA input.
+# Your rna_features.py can then just call them.
 
-Right now your rna_features.py assumes seqs is just a list of strings. The old code uses FASTA reading. Decide whether you want both options:
+# Implement the missing 3–6 methods properly in rna_features.py.
+# For example:
 
-Option A: keep only seqs: list[str] → simplest for ML.
+# from util import make_pseknc_vector, make_ac_vector, make_cc_vector
 
-Option B: add a from_fasta(filename) helper that calls your existing functions.
+# def psednc_matrix(seqs, props, lam, w=0.05, return_format="matrix", sample_ids=None):
+#     vecs = make_pseknc_vector(seqs, lam, w, k=2, phyche_value=props)
+#     cols = [f"PseDNC_{i}" for i in range(len(vecs[0]))]
+#     return cols, vecs
 
-🚀 My Recommendation
 
-Stick with your current modular code (rna_features.py + util.py), but borrow the missing math logic from the big script to implement methods 3–6.
-That way:
+# Do the same for DAC, DCC, DACC using make_ac_vector / make_cc_vector.
 
-You stay clean & Jupyter-friendly.
+# Drop sys.argv / CLI logic.
 
-You cover all 12 RNA feature types.
+# That’s useful for standalone command-line tools, but since you’re aiming to run ML pipelines in Jupyter, keep everything as functions.
 
-You don’t rely on a giant monolithic script with sys.argv.
+# FASTA input.
+
+# Right now your rna_features.py assumes seqs is just a list of strings. The old code uses FASTA reading. Decide whether you want both options:
+
+# Option A: keep only seqs: list[str] → simplest for ML.
+
+# Option B: add a from_fasta(filename) helper that calls your existing functions.
+
+# 🚀 My Recommendation
+
+# Stick with your current modular code (rna_features.py + util.py), but borrow the missing math logic from the big script to implement methods 3–6.
+# That way:
+
+# You stay clean & Jupyter-friendly.
+
+# You cover all 12 RNA feature types.
+
+# You don’t rely on a giant monolithic script with sys.argv.
+
+
+# 1.Data  w pandas 
+# 2. loading data 
+# 3. arc parse it's gonna be a class iself then i call it in the main 
+# 4. feature extractor will cordinate 
+
+#i gotta use grtoup by for the all data file  based on the id -> from id and dis i gotta find sequences 
+#group by funciont in pandas 
