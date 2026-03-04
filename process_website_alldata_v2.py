@@ -54,7 +54,7 @@ def ensure_dir(p: Path) -> Path:
 def norm_text(s: str) -> str:
     """Normalization for matching (lowercase, strip punctuation, collapse whitespace)."""
     s = str(s or "").strip().lower()
-    s = re.sub(r"[\(\)\[\]\{\},;:/\\\-\+_]", " ", s)
+    s = re.sub(r"[^a-z0-9\s]", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
