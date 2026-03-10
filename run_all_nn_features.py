@@ -3,11 +3,11 @@ Run all NN feature methods over one or more sequence CSVs.
 
 Inputs: CSVs with id,seq or ID/seqs.
 If none are provided or a provided path is missing, the script will try to
-locate/generate sequences_for_oop.csv from existing outputs:
+locate a usable sequences CSV from existing outputs:
   - Data/output_data/sequences_for_oop.csv
   - Data/output_data/sequences_v2.csv
   - Data/output_data/website_sequences_for_oop.csv
-  - Data/output_data/website_sequences.csv (ID, seqs -> id,seq)
+  - Data/output_data/website_sequences.csv (ID, seqs)
   - Data/output_data/website_full_matrix.csv (ID, seqs columns)
 
 Outputs: <outdir>/<version_name>/nn/
@@ -35,7 +35,7 @@ def normalize_id_seq(csv_path: Path):
     return df["id"].tolist(), df["seq"].tolist()
 
 
-def find_or_build_sequences_csv() -> Path:
+def find_default_sequences_csv() -> Path:
     candidates = [
         Path("Data/output_data/sequences_for_oop.csv"),
         Path("Data/output_data/sequences_v2.csv"),
@@ -45,18 +45,6 @@ def find_or_build_sequences_csv() -> Path:
     ]
     for c in candidates:
         if c.exists():
-            # If it's website_sequences.csv or website_full_matrix.csv, normalize to id,seq and save sequences_for_oop.csv
-            if c.name in ("website_sequences.csv", "website_full_matrix.csv"):
-                df = pd.read_csv(c, dtype=str)
-                cols = [col.lower() for col in df.columns]
-                df.columns = cols
-                if "seqs" not in cols or "id" not in cols:
-                    continue
-                seq_df = df[["id", "seqs"]].rename(columns={"seqs": "seq"}).dropna(subset=["id", "seq"])
-                out = Path("Data/output_data/sequences_for_oop.csv")
-                out.parent.mkdir(parents=True, exist_ok=True)
-                seq_df.to_csv(out, index=False)
-                return out
             return c
     raise FileNotFoundError(
         "No sequences CSV found. Expected one of sequences_for_oop.csv, sequences_v2.csv, "
@@ -83,7 +71,7 @@ def main():
     if args.seqs_csv:
         seqs_list = [Path(p) for p in args.seqs_csv]
     else:
-        seqs_list = [find_or_build_sequences_csv()]
+        seqs_list = [find_default_sequences_csv()]
 
     out_base = Path(args.outdir) / args.version_name / "nn"
     out_base.mkdir(parents=True, exist_ok=True)
