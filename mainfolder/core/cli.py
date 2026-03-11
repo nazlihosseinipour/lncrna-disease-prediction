@@ -346,11 +346,13 @@ class CLI:
                 kwargs = method_params.get(mid, {}).copy()
                 kwargs.update(
                     {
-                        "normalize": args.normalize,
                         "return_format": args.return_format,
                         "sample_ids": ids2,
                     }
                 )
+                # Only methods with composition/k-mer style outputs accept normalize.
+                if mid in (1, 2, 7, 8, 9, 10, 11, 12):
+                    kwargs["normalize"] = args.normalize
                 if "props" in method_params.get(mid, {}) and props is None:
                     print(f"[skip] method {mid} ({name}) requires --props_csv", file=sys.stderr)
                     continue

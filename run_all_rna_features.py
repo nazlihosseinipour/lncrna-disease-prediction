@@ -7,7 +7,7 @@ Notes:
 
 Usage example:
   python run_all_rna_features.py \
-    --seqs_csv Data/output_data/sequences_for_oop.csv Data/output_data/website_full_matrix_v3.csv \
+    --seqs_csv Data/output_data/sequences_for_oop.csv Data/output_data/website_full_matrix.csv \
     --outdir final-output \
     --props_csv path/to/dinuc_props.csv
 """
@@ -64,7 +64,7 @@ def main():
         "--seqs_csv",
         nargs="+",
         required=True,
-        help="One or more CSVs with id/seq or ID/seqs (e.g. sequences_for_oop.csv, website_full_matrix_v3.csv)",
+        help="One or more CSVs with id/seq or ID/seqs (e.g. sequences_for_oop.csv, website_full_matrix.csv)",
     )
     p.add_argument("--outdir", required=True, help="Base folder to save outputs")
     p.add_argument("--version_name", required=True, help="Data version label (e.g., v2, v3)")
