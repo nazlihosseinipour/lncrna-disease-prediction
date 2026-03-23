@@ -67,7 +67,7 @@ def main():
         help="One or more CSVs with id/seq or ID/seqs (e.g. sequences_for_oop.csv, website_full_matrix.csv)",
     )
     p.add_argument("--outdir", required=True, help="Base folder to save outputs")
-    p.add_argument("--version_name", required=True, help="Data version label (e.g., v2, v3)")
+    p.add_argument("--version_name", required=True, help="Data version label (e.g., v1, v2)")
     p.add_argument("--k", type=int, default=3, help="k for k-mer based methods (1,2,8,9)")
     p.add_argument("--lam", type=int, default=2, help="lam for PseDNC (method 3)")
     p.add_argument("--weight", type=float, default=0.5, help="w for PseDNC (method 3)")
@@ -107,6 +107,11 @@ def main():
         ids, seqs = normalize_id_seq(seqs_path)
         # Drop sequences with invalid chars (including N) to avoid downstream errors
         ids2, seqs2 = preprocess_sequences(ids, seqs, valid_alphabet=set(ALPHABET), strict=False)
+        if not seqs2:
+            raise ValueError(
+                f"{seqs_path} produced 0 valid sequences after preprocessing. "
+                "Check seq/seqs content and allowed RNA alphabet."
+            )
 
         stem = seqs_path.stem
         for mid, name in sorted(RnaFeatures.METHOD_MAP.items()):

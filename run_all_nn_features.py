@@ -60,7 +60,7 @@ def main():
         help="One or more CSVs with id/seq or ID/seqs (e.g. sequences_for_oop.csv, website_full_matrix.csv)",
     )
     p.add_argument("--outdir", required=True, help="Base output directory")
-    p.add_argument("--version_name", required=True, help="Data version label (e.g., v2, v3)")
+    p.add_argument("--version_name", required=True, help="Data version label (e.g., v1, v2)")
     p.add_argument("--batch_size", type=int, default=2, help="Batch size for NN models")
     p.add_argument("--layer", type=int, help="Layer for *_tokens methods")
     p.add_argument("--window", type=int, default=1024, help="Window for chunked methods")

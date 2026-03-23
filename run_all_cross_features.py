@@ -27,6 +27,13 @@ def load_matrix(csv_path: Path) -> pd.DataFrame:
             df[c] = df[c].astype(float)
         except Exception:
             df = df.drop(columns=[c])
+    if df.shape[1] == 0:
+        raise ValueError(
+            f"{csv_path} has no numeric disease columns after filtering. "
+            "Expected an lncRNA x disease numeric matrix (with optional ID first column)."
+        )
+    if df.shape[0] == 0:
+        raise ValueError(f"{csv_path} has zero rows after loading; cannot run cross features.")
     return df
 
 
@@ -39,7 +46,7 @@ def main():
         help="One or more CSVs with lncRNA x disease matrices (e.g., website_disease_matrix.csv)",
     )
     p.add_argument("--outdir", required=True, help="Base output directory")
-    p.add_argument("--version_name", required=True, help="Data version label (e.g., v2, v3)")
+    p.add_argument("--version_name", required=True, help="Data version label (e.g., v1, v2)")
     p.add_argument("--k", type=int, default=64, help="k for SVD features (method 17)")
     args = p.parse_args()
 

@@ -39,7 +39,7 @@ def main():
     p.add_argument("--disease_terms", required=True, help="CSV with disease,term mapping")
     p.add_argument("--Y", required=True, help="Disease matrix CSV (rows=lncRNAs, cols=diseases)")
     p.add_argument("--outdir", required=True, help="Base output directory (e.g. final-output)")
-    p.add_argument("--version_name", required=True, help="Data version label, e.g., v2 or v3")
+    p.add_argument("--version_name", required=True, help="Data version label, e.g., v1 or v2")
     p.add_argument("--edge_weight", type=float, default=0.8, help="Edge decay for Wang similarity")
     args = p.parse_args()
 

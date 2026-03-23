@@ -1,5 +1,5 @@
 """
-Compare v2 vs v3 outputs across all feature domains (rna, disease, cross, nn),
+Compare v1 vs v2 outputs across all feature domains (rna, disease, cross, nn),
 and also provide the legacy label-stats comparison for two matrices.
 
 Usage:
@@ -11,10 +11,10 @@ import pandas as pd
 
 # Legacy matrix comparison 
 # Legacy matrix comparison (label stats). Adjust these to real files on disk.
-# v2: raw sequences matrix with diseases
-# v3: website full matrix with diseases
-LEGACY_V2 = Path("Data/raw/sequences.csv")
-LEGACY_V3 = Path("Data/output_data/website_full_matrix.csv")
+# v1: raw sequences matrix with diseases
+# v2: website full matrix with diseases
+LEGACY_V1 = Path("Data/raw/sequences.csv")
+LEGACY_V2 = Path("Data/output_data/website_full_matrix.csv")
 ID_COL = "ID"    # expected ID column
 SEQ_COL = "seqs" # drop this if present
 
@@ -31,30 +31,30 @@ def csv_shape(path: Path) -> str:
 
 
 def compare_domain(domain: str):
+    dir_v1 = BASE / "v1" / domain
     dir_v2 = BASE / "v2" / domain
-    dir_v3 = BASE / "v3" / domain
-    if not dir_v2.exists() or not dir_v3.exists():
-        return pd.DataFrame(columns=["domain", "file", "v2_shape", "v3_shape"])
+    if not dir_v1.exists() or not dir_v2.exists():
+        return pd.DataFrame(columns=["domain", "file", "v1_shape", "v2_shape"])
 
+    files_v1 = {p.name: p for p in dir_v1.glob("*") if p.is_file()}
     files_v2 = {p.name: p for p in dir_v2.glob("*") if p.is_file()}
-    files_v3 = {p.name: p for p in dir_v3.glob("*") if p.is_file()}
-    common = sorted(set(files_v2) & set(files_v3))
+    common = sorted(set(files_v1) & set(files_v2))
 
     rows = []
     for name in common:
-        p2, p3 = files_v2[name], files_v3[name]
+        p1, p2 = files_v1[name], files_v2[name]
         rows.append(
             {
                 "domain": domain,
                 "file": name,
-                "v2_shape": csv_shape(p2),
-                "v3_shape": csv_shape(p3),
+                "v1_shape": csv_shape(p1),
+                "v2_shape": csv_shape(p2)
             }
         )
     return pd.DataFrame(rows)
 
 
-# --- Legacy stats helpers (copied from original script) ---
+
 def load_matrix(path: Path, id_col: str, seq_col: str | None):
     df = pd.read_csv(path)
     cols_lower = {c.lower(): c for c in df.columns}
@@ -77,28 +77,32 @@ def dataset_stats(df: pd.DataFrame):
     n_seq = len(df)
     n_dis = len(label_cols)
     total_ones = labels.to_numpy(dtype=int, copy=False).sum()
-    avg_dis_per_seq = total_ones / n_seq if n_seq else 0.0 # i need this per row which axis are they on , either row or col 
+    # Row axis = sequences (one row per ID), column axis = diseases.
+    avg_pos_per_row_sequence = float(labels.sum(axis=1).mean()) if n_seq else 0.0
+    avg_pos_per_col_disease = float(labels.sum(axis=0).mean()) if n_dis else 0.0
     density = total_ones / (n_seq * n_dis) if n_seq and n_dis else 0.0
     return {
         "num_sequences": n_seq,
         "num_diseases": n_dis,
-        "avg_diseases_per_seq": avg_dis_per_seq,
+        "avg_diseases_per_seq": avg_pos_per_row_sequence,  # backward-compatible alias
+        "avg_pos_per_row_sequence": avg_pos_per_row_sequence,
+        "avg_pos_per_col_disease": avg_pos_per_col_disease,
         "label_density": density,
         "total_ones": total_ones,
     }
 
 
-def compare_interactions(df2: pd.DataFrame, df3: pd.DataFrame):
-    common_ids = sorted(set(df2["ID"]) & set(df3["ID"]))
+def compare_interactions(df1: pd.DataFrame, df2: pd.DataFrame):
+    common_ids = sorted(set(df1["ID"]) & set(df2["ID"]))
+    label_cols1 = [c for c in df1.columns if c != "ID"]
     label_cols2 = [c for c in df2.columns if c != "ID"]
-    label_cols3 = [c for c in df3.columns if c != "ID"]
-    common_labels = sorted(set(label_cols2) & set(label_cols3))
+    common_labels = sorted(set(label_cols1) & set(label_cols2))
+    sub1 = df1.set_index("ID").loc[common_ids, common_labels].sort_index()
     sub2 = df2.set_index("ID").loc[common_ids, common_labels].sort_index()
-    sub3 = df3.set_index("ID").loc[common_ids, common_labels].sort_index()
+    mat1 = sub1.to_numpy(dtype=int, copy=False)
     mat2 = sub2.to_numpy(dtype=int, copy=False)
-    mat3 = sub3.to_numpy(dtype=int, copy=False)
-    added = ((mat3 == 1) & (mat2 == 0)).sum()
-    removed = ((mat2 == 1) & (mat3 == 0)).sum()
+    added = ((mat2 == 1) & (mat1 == 0)).sum()
+    removed = ((mat1 == 1) & (mat2 == 0)).sum()
     return {
         "common_sequences": len(common_ids),
         "common_diseases": len(common_labels),
@@ -110,18 +114,21 @@ def compare_interactions(df2: pd.DataFrame, df3: pd.DataFrame):
 def legacy_compare():
     rows = []
     try:
+        df1 = load_matrix(LEGACY_V1, ID_COL, SEQ_COL)
         df2 = load_matrix(LEGACY_V2, ID_COL, SEQ_COL)
-        df3 = load_matrix(LEGACY_V3, ID_COL, SEQ_COL)
+        stats1 = dataset_stats(df1)
         stats2 = dataset_stats(df2)
-        stats3 = dataset_stats(df3)
-        cmp_stats = compare_interactions(df2, df3)
+        cmp_stats = compare_interactions(df1, df2)
         summary = pd.DataFrame(
             {
-                "version": ["v2", "v3"],
-                "num_sequences": [stats2["num_sequences"], stats3["num_sequences"]],
-                "num_diseases": [stats2["num_diseases"], stats3["num_diseases"]],
-                "avg_diseases_per_seq": [stats2["avg_diseases_per_seq"], stats3["avg_diseases_per_seq"]],
-                "label_density": [stats2["label_density"], stats3["label_density"]],
+                "version": ["v1", "v2"],
+                "num_sequences": [stats1["num_sequences"], stats2["num_sequences"]],
+                "num_diseases": [stats1["num_diseases"], stats2["num_diseases"]],
+                # Backward-compatible legacy field name.
+                "avg_diseases_per_seq": [stats1["avg_diseases_per_seq"], stats2["avg_diseases_per_seq"]],
+                "avg_pos_per_row_sequence": [stats1["avg_pos_per_row_sequence"], stats2["avg_pos_per_row_sequence"]],
+                "avg_pos_per_col_disease": [stats1["avg_pos_per_col_disease"], stats2["avg_pos_per_col_disease"]],
+                "label_density": [stats1["label_density"], stats2["label_density"]],
             }
         )
         delta = pd.DataFrame(
@@ -151,14 +158,14 @@ def main():
     frames = [compare_domain(d) for d in DOMAINS]
     summary = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     if summary.empty:
-        print("\nNo comparable files found under final-output/v2 and final-output/v3.")
+        print("\nNo comparable files found under final-output/v1 and final-output/v2.")
         return
     for domain in DOMAINS:
         sub = summary[summary["domain"] == domain]
         if sub.empty:
             continue
         print(f"\n=== {domain.upper()} (common files: {len(sub)}) ===")
-        print(sub[["file", "v2_shape", "v3_shape"]].to_string(index=False))
+        print(sub[["file", "v1_shape", "v2_shape"]].to_string(index=False))
 
 
 if __name__ == "__main__":
