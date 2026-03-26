@@ -45,6 +45,7 @@ def test_detect_id_kind_classifies_expected_cases():
     assert detect_id_kind("DQ600483") == "accession"
     assert detect_id_kind("NR_024031") == "accession"
     assert detect_id_kind("DLEU1") == "symbol"
+    assert detect_id_kind("AC002480.5") == "symbol"
 
 
 def test_fetch_sequence_by_id_fetches_ensembl_ids_directly():
@@ -112,7 +113,22 @@ def test_fetch_sequence_by_id_resolves_symbols_through_ensembl_lookup():
     assert result.resolved_id == resolved_id
 
 
-def test_fetch_sequence_by_id_marks_ambiguous_symbols_for_manual_review():
+def test_fetch_sequence_by_id_treats_ac_style_ids_as_symbol_like():
+    symbol_like = "AC002480.5"
+    resolved_id = "ENSG00000251562"
+    session = FakeSession(
+        {
+            ENSEMBL_LOOKUP.format(symbol=symbol_like): FakeResponse(json_data={"id": resolved_id}),
+            ENSEMBL_SEQ.format(ensembl_id=resolved_id): FakeResponse(text="AUGC"),
+        }
+    )
+    result = fetch_sequence_by_id(session, symbol_like)
+    assert result.status == "symbol_resolved"
+    assert result.sequence == "AUGC"
+    assert result.resolved_id == resolved_id
+
+
+def test_fetch_sequence_by_id_uses_first_xref_candidate_for_ambiguous_symbols():
     symbol = "E2F"
     session = FakeSession(
         {
@@ -124,11 +140,37 @@ def test_fetch_sequence_by_id_marks_ambiguous_symbols_for_manual_review():
                 ]
             ),
             ENSEMBL_XREF_NAME.format(symbol=symbol): FakeResponse(json_data=[]),
+            ENSEMBL_SEQ.format(ensembl_id="ENSG00000101412"): FakeResponse(text="AUGC"),
         }
     )
     result = fetch_sequence_by_id(session, symbol)
-    assert result.status == "ambiguous_symbol"
+    assert result.status == "ambiguous_symbol_first_candidate_used"
+    assert result.sequence == "AUGC"
+    assert result.resolved_id == "ENSG00000101412"
+    assert result.alternative_ids == ("ENSG00000112242",)
+    assert result.source == "xrefs_symbol"
+
+
+def test_fetch_sequence_by_id_keeps_alternatives_when_first_candidate_fails():
+    symbol = "E2F"
+    session = FakeSession(
+        {
+            ENSEMBL_LOOKUP.format(symbol=symbol): FakeResponse(status_code=404, json_data={}),
+            ENSEMBL_XREF.format(symbol=symbol): FakeResponse(
+                json_data=[
+                    {"id": "ENSG00000101412", "type": "gene"},
+                    {"id": "ENSG00000112242", "type": "gene"},
+                ]
+            ),
+            ENSEMBL_XREF_NAME.format(symbol=symbol): FakeResponse(json_data=[]),
+            ENSEMBL_SEQ.format(ensembl_id="ENSG00000101412"): FakeResponse(text="No sequence available"),
+        }
+    )
+    result = fetch_sequence_by_id(session, symbol)
+    assert result.status == "unresolved"
     assert result.sequence == ""
+    assert result.resolved_id == "ENSG00000101412"
+    assert result.alternative_ids == ("ENSG00000112242",)
 
 
 def test_fetch_sequence_by_id_marks_missing_symbols_unresolved():

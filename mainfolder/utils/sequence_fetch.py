@@ -14,6 +14,7 @@ NCBI_EFETCH = (
     "?db=nuccore&id={accession}&rettype=fasta&retmode=text"
 )
 VALID_NUCLEOTIDE_CHARS = set("ACGTUNRYSWKMBDHVX")
+CAUTIOUS_PREFIXES = ("AC", "AL", "AJ", "AF")
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,8 @@ class SequenceFetchResult:
     status: str
     detail: str
     resolved_id: str = ""
+    alternative_ids: tuple[str, ...] = ()
+    source: str = ""
 
     def report_row(self, id_column: str = "ID") -> dict[str, str]:
         return {
@@ -43,6 +46,14 @@ class SequenceFetchResult:
             "resolved_id": self.resolved_id,
         }
 
+    def alternatives_row(self) -> dict[str, str]:
+        return {
+            "query_id": self.query_id,
+            "selected_id": self.resolved_id,
+            "alternative_ids": "|".join(self.alternative_ids),
+            "source": self.source,
+        }
+
 
 def parse_fasta_text(text: str) -> str:
     lines = [ln.strip() for ln in str(text or "").splitlines() if ln and not ln.startswith(">")]
@@ -60,13 +71,11 @@ def detect_id_kind(raw_id: str) -> str:
         return "empty"
     if rid.startswith("ENS"):
         return "ensembl"
-    accession_patterns = (
-        r"^[A-Z]{2}_\d+(\.\d+)?$",
-        r"^[A-Z]{1}\d{5}(\.\d+)?$",
-        r"^[A-Z]{2}\d{6,}(\.\d+)?$",
-        r"^[A-Z]{4}\d{8,}(\.\d+)?$",
-    )
-    if any(re.match(pattern, rid) for pattern in accession_patterns):
+    if re.match(r"^(?:NM|NR|XM|XR|NC|NG|NT|NW|NZ)_\d+(\.\d+)?$", rid):
+        return "accession"
+    if re.match(r"^[A-Z]\d{5}(\.\d+)?$", rid):
+        return "accession"
+    if re.match(r"^[A-Z]{2}\d{6,}(\.\d+)?$", rid) and not rid.startswith(CAUTIOUS_PREFIXES):
         return "accession"
     return "symbol"
 
@@ -79,6 +88,8 @@ def _result(
     status: str,
     detail: str,
     resolved_id: str = "",
+    alternative_ids: tuple[str, ...] = (),
+    source: str = "",
 ) -> SequenceFetchResult:
     return SequenceFetchResult(
         query_id=str(query_id or "").strip(),
@@ -87,6 +98,8 @@ def _result(
         status=status,
         detail=str(detail or "").strip(),
         resolved_id=str(resolved_id or "").strip(),
+        alternative_ids=tuple(str(x).strip() for x in (alternative_ids or ()) if str(x).strip()),
+        source=str(source or "").strip(),
     )
 
 
@@ -128,10 +141,11 @@ def fetch_ncbi_accession(session, accession: str, *, timeout: int = 10, query_id
     return _result(qid, "accession", sequence=seq, status="accession_fetched", detail=f"ncbi:{acc}", resolved_id=acc)
 
 
-def _xref_candidates(session, symbol: str, *, timeout: int = 10) -> tuple[list[str], list[str]]:
+def _xref_candidates(session, symbol: str, *, timeout: int = 10) -> tuple[list[tuple[str, str]], list[str]]:
     symbol_q = quote(symbol, safe="")
-    candidates: list[str] = []
+    candidates: list[tuple[str, str]] = []
     notes: list[str] = []
+    seen: set[str] = set()
     for label, template in (("xrefs_symbol", ENSEMBL_XREF), ("xrefs_name", ENSEMBL_XREF_NAME)):
         try:
             response = session.get(
@@ -153,10 +167,10 @@ def _xref_candidates(session, symbol: str, *, timeout: int = 10) -> tuple[list[s
         for item in payload:
             eid = str(item.get("id") or "").strip()
             typ = str(item.get("type") or "").strip().lower()
-            if eid.startswith("ENS") or typ in {"gene", "transcript"}:
-                candidates.append(eid)
-    unique_candidates = sorted(set(candidates))
-    return unique_candidates, notes
+            if (eid.startswith("ENS") or typ in {"gene", "transcript"}) and eid not in seen:
+                seen.add(eid)
+                candidates.append((eid, label))
+    return candidates, notes
 
 
 def resolve_symbol(session, symbol: str, *, timeout: int = 10) -> SequenceFetchResult:
@@ -187,6 +201,7 @@ def resolve_symbol(session, symbol: str, *, timeout: int = 10) -> SequenceFetchR
                 status="symbol_resolved",
                 detail=f"symbol_lookup:{sym}->{resolved_id}",
                 resolved_id=resolved_id,
+                source="lookup_symbol",
             )
         return _result(
             sym,
@@ -194,15 +209,35 @@ def resolve_symbol(session, symbol: str, *, timeout: int = 10) -> SequenceFetchR
             status="unresolved",
             detail=f"symbol_lookup_resolved:{resolved_id}; {seq_result.detail}",
             resolved_id=resolved_id,
+            source="lookup_symbol",
         )
     candidates, notes = _xref_candidates(session, sym, timeout=timeout)
-    if len(candidates) > 1:
+    if candidates:
+        selected_id, source = candidates[0]
+        alternative_ids = tuple(eid for eid, _ in candidates[1:])
+        seq_result = fetch_ensembl_sequence(session, selected_id, timeout=timeout, query_id=sym)
+        detail = f"{source}:{sym}->{selected_id}"
+        if alternative_ids:
+            detail = f"{detail}; alternatives:{'|'.join(alternative_ids)}"
+        if seq_result.sequence:
+            return _result(
+                sym,
+                "symbol",
+                sequence=seq_result.sequence,
+                status="ambiguous_symbol_first_candidate_used" if alternative_ids else "symbol_resolved",
+                detail=detail,
+                resolved_id=selected_id,
+                alternative_ids=alternative_ids,
+                source=source,
+            )
         return _result(
             sym,
             "symbol",
-            status="ambiguous_symbol",
-            detail=f"ambiguous_symbol:{len(candidates)}_candidates",
-            resolved_id="",
+            status="unresolved",
+            detail=f"{detail}; {seq_result.detail}",
+            resolved_id=selected_id,
+            alternative_ids=alternative_ids,
+            source=source,
         )
     if response.status_code in {400, 404}:
         detail = f"symbol_lookup_status:{response.status_code}"
@@ -225,4 +260,4 @@ def fetch_sequence_by_id(session, raw_id: str, *, timeout: int = 10) -> Sequence
 
 
 def needs_manual_review(result: SequenceFetchResult) -> bool:
-    return result.status in {"unresolved", "ambiguous_symbol"}
+    return result.status == "unresolved"
