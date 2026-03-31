@@ -60,7 +60,7 @@ class DiseaseFeatures(FeatureModule):
                     q.append((p, cand))
         self._s_cache[term] = S
         return S
-
+    # DOES IT INCLUDE ALL OF THE ONES TO THE ROOT ???? CHECK 
     def wang_term_similarity(self, t1: str, t2: str) -> float:
         """
         Sim_Wang(t1,t2) = sum_{a∈A∩B}(S1(a)+S2(a)) / [sum_{a∈A}S1(a) + sum_{b∈B}S2(b)].

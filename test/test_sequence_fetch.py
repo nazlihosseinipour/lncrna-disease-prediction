@@ -14,6 +14,7 @@ from mainfolder.utils.sequence_fetch import (
     ENSEMBL_XREF_NAME,
     NCBI_EFETCH,
     detect_id_kind,
+    detect_id_route,
     fetch_sequence_by_id,
 )
 
@@ -37,7 +38,12 @@ class FakeSession:
     def get(self, url, headers=None, timeout=None):
         if url not in self.responses:
             raise AssertionError(f"unexpected url: {url}")
-        return self.responses[url]
+        value = self.responses[url]
+        if isinstance(value, list):
+            if not value:
+                raise AssertionError(f"no more queued responses for url: {url}")
+            return value.pop(0)
+        return value
 
 
 def test_detect_id_kind_classifies_expected_cases():
@@ -46,6 +52,38 @@ def test_detect_id_kind_classifies_expected_cases():
     assert detect_id_kind("NR_024031") == "accession"
     assert detect_id_kind("DLEU1") == "symbol"
     assert detect_id_kind("AC002480.5") == "symbol"
+
+
+def test_detect_id_route_assigns_expected_families_and_namespaces():
+    ensembl = detect_id_route("ENSG00000251562.5")
+    assert ensembl.family == "ensembl_versioned"
+    assert ensembl.namespace == "ensembl"
+    assert ensembl.id_type == "ensembl"
+
+    refseq = detect_id_route("NR_024031.1")
+    assert refseq.family == "refseq_versioned"
+    assert refseq.namespace == "ncbi_nuccore"
+    assert refseq.id_type == "accession"
+
+    cautious = detect_id_route("AC002480.5")
+    assert cautious.family == "cautious_clone_symbol_versioned"
+    assert cautious.namespace == "ensembl_symbol"
+    assert cautious.id_type == "symbol"
+
+    loc = detect_id_route("LOC100127888")
+    assert loc.family == "loc_symbol"
+    assert loc.namespace == "ensembl_symbol"
+    assert loc.id_type == "symbol"
+
+    catalog = detect_id_route("lnc-ABCC5-2:1")
+    assert catalog.family == "catalog_symbol"
+    assert catalog.namespace == "ensembl_symbol"
+    assert catalog.id_type == "symbol"
+
+    family = detect_id_route("E2F")
+    assert family.family == "family_symbol"
+    assert family.namespace == "ensembl_symbol"
+    assert family.id_type == "symbol"
 
 
 def test_fetch_sequence_by_id_fetches_ensembl_ids_directly():
@@ -61,6 +99,22 @@ def test_fetch_sequence_by_id_fetches_ensembl_ids_directly():
     assert result.resolved_id == ensembl_id
 
 
+def test_fetch_sequence_by_id_retries_versioned_ensembl_ids_without_suffix():
+    ensembl_id = "ENSG00000251562.5"
+    base_id = "ENSG00000251562"
+    session = FakeSession(
+        {
+            ENSEMBL_SEQ.format(ensembl_id=ensembl_id): FakeResponse(status_code=404, text="not found"),
+            ENSEMBL_SEQ.format(ensembl_id=base_id): FakeResponse(text="AUGCUU"),
+        }
+    )
+    result = fetch_sequence_by_id(session, ensembl_id)
+    assert result.status == "ensembl_version_retry_fetched"
+    assert result.sequence == "AUGCUU"
+    assert result.resolved_id == base_id
+    assert result.detail == f"retry_without_version:{ensembl_id}->{base_id}"
+
+
 def test_fetch_sequence_by_id_fetches_accessions_from_ncbi():
     accession = "NR_024031"
     session = FakeSession(
@@ -72,6 +126,22 @@ def test_fetch_sequence_by_id_fetches_accessions_from_ncbi():
     assert result.status == "accession_fetched"
     assert result.sequence == "AUGCUU"
     assert result.resolved_id == accession
+
+
+def test_fetch_sequence_by_id_retries_versioned_refseq_ids_without_suffix():
+    accession = "NR_024031.1"
+    base_id = "NR_024031"
+    session = FakeSession(
+        {
+            NCBI_EFETCH.format(accession=accession): FakeResponse(status_code=404, text="not found"),
+            NCBI_EFETCH.format(accession=base_id): FakeResponse(text=">x\nAUGC\nUU"),
+        }
+    )
+    result = fetch_sequence_by_id(session, accession)
+    assert result.status == "accession_version_retry_fetched"
+    assert result.sequence == "AUGCUU"
+    assert result.resolved_id == base_id
+    assert result.detail == f"retry_without_version:{accession}->{base_id}"
 
 
 def test_fetch_sequence_by_id_rejects_ncbi_error_payload():
@@ -96,6 +166,22 @@ def test_fetch_sequence_by_id_rejects_ensembl_error_payload():
     result = fetch_sequence_by_id(session, ensembl_id)
     assert result.status == "unresolved"
     assert result.sequence == ""
+
+
+def test_fetch_sequence_by_id_retries_transient_ensembl_sequence_errors():
+    ensembl_id = "ENSG00000251562"
+    session = FakeSession(
+        {
+            ENSEMBL_SEQ.format(ensembl_id=ensembl_id): [
+                FakeResponse(status_code=500, text="server error"),
+                FakeResponse(text="AUGC"),
+            ],
+        }
+    )
+    result = fetch_sequence_by_id(session, ensembl_id)
+    assert result.status == "ensembl_fetched"
+    assert result.sequence == "AUGC"
+    assert result.resolved_id == ensembl_id
 
 
 def test_fetch_sequence_by_id_resolves_symbols_through_ensembl_lookup():
@@ -126,6 +212,119 @@ def test_fetch_sequence_by_id_treats_ac_style_ids_as_symbol_like():
     assert result.status == "symbol_resolved"
     assert result.sequence == "AUGC"
     assert result.resolved_id == resolved_id
+
+
+def test_fetch_sequence_by_id_retries_transient_symbol_lookup_errors():
+    symbol = "MALAT1"
+    resolved_id = "ENSG00000251562"
+    session = FakeSession(
+        {
+            ENSEMBL_LOOKUP.format(symbol=symbol): [
+                FakeResponse(status_code=500, json_data={}),
+                FakeResponse(json_data={"id": resolved_id}),
+            ],
+            ENSEMBL_SEQ.format(ensembl_id=resolved_id): FakeResponse(text="AUGC"),
+        }
+    )
+    result = fetch_sequence_by_id(session, symbol)
+    assert result.status == "symbol_resolved"
+    assert result.sequence == "AUGC"
+    assert result.resolved_id == resolved_id
+
+
+def test_fetch_sequence_by_id_retries_cautious_symbol_without_suffix():
+    symbol_like = "AC002480.5"
+    base_symbol = "AC002480"
+    resolved_id = "ENSG00000251562"
+    session = FakeSession(
+        {
+            ENSEMBL_LOOKUP.format(symbol=symbol_like): FakeResponse(status_code=404, json_data={}),
+            ENSEMBL_XREF.format(symbol=symbol_like): FakeResponse(json_data=[]),
+            ENSEMBL_XREF_NAME.format(symbol=symbol_like): FakeResponse(json_data=[]),
+            ENSEMBL_LOOKUP.format(symbol=base_symbol): FakeResponse(json_data={"id": resolved_id}),
+            ENSEMBL_SEQ.format(ensembl_id=resolved_id): FakeResponse(text="AUGC"),
+        }
+    )
+    result = fetch_sequence_by_id(session, symbol_like)
+    assert result.status == "symbol_version_retry_resolved"
+    assert result.sequence == "AUGC"
+    assert result.resolved_id == resolved_id
+    assert result.detail == f"retry_without_version:{symbol_like}->{base_symbol}; symbol_lookup:{base_symbol}->{resolved_id}"
+
+
+def test_fetch_sequence_by_id_retries_symbol_variants_with_transcript_suffix():
+    symbol_like = "AC084816.1-205"
+    versioned_symbol = "AC084816.1"
+    base_symbol = "AC084816"
+    resolved_id = "ENSG00000251562"
+    session = FakeSession(
+        {
+            ENSEMBL_LOOKUP.format(symbol=symbol_like): FakeResponse(status_code=400, json_data={}),
+            ENSEMBL_XREF.format(symbol=symbol_like): FakeResponse(json_data=[]),
+            ENSEMBL_XREF_NAME.format(symbol=symbol_like): FakeResponse(json_data=[]),
+            ENSEMBL_LOOKUP.format(symbol=versioned_symbol): FakeResponse(status_code=404, json_data={}),
+            ENSEMBL_XREF.format(symbol=versioned_symbol): FakeResponse(json_data=[]),
+            ENSEMBL_XREF_NAME.format(symbol=versioned_symbol): FakeResponse(json_data=[]),
+            ENSEMBL_LOOKUP.format(symbol=base_symbol): FakeResponse(json_data={"id": resolved_id}),
+            ENSEMBL_SEQ.format(ensembl_id=resolved_id): FakeResponse(text="AUGC"),
+        }
+    )
+    result = fetch_sequence_by_id(session, symbol_like)
+    assert result.status == "symbol_variant_retry_resolved"
+    assert result.sequence == "AUGC"
+    assert result.resolved_id == resolved_id
+    assert result.detail == (
+        f"retry_variant:{symbol_like}->{versioned_symbol}; "
+        f"retry_without_version:{versioned_symbol}->{base_symbol}; symbol_lookup:{base_symbol}->{resolved_id}"
+    )
+
+
+def test_fetch_sequence_by_id_retries_symbol_variants_with_colon_suffix():
+    symbol_like = "lnc-ABCC5-2:1"
+    base_symbol = "lnc-ABCC5-2"
+    resolved_id = "ENSG00000251562"
+    session = FakeSession(
+        {
+            ENSEMBL_LOOKUP.format(symbol=symbol_like): FakeResponse(status_code=400, json_data={}),
+            ENSEMBL_XREF.format(symbol=symbol_like): FakeResponse(json_data=[]),
+            ENSEMBL_XREF_NAME.format(symbol=symbol_like): FakeResponse(json_data=[]),
+            ENSEMBL_LOOKUP.format(symbol=base_symbol): FakeResponse(json_data={"id": resolved_id}),
+            ENSEMBL_SEQ.format(ensembl_id=resolved_id): FakeResponse(text="AUGC"),
+        }
+    )
+    result = fetch_sequence_by_id(session, symbol_like)
+    assert result.status == "symbol_variant_retry_resolved"
+    assert result.sequence == "AUGC"
+    assert result.resolved_id == resolved_id
+    assert result.detail == f"retry_variant:{symbol_like}->{base_symbol}; symbol_lookup:{base_symbol}->{resolved_id}"
+
+
+def test_fetch_sequence_by_id_does_not_retry_without_suffix_for_ac_style_symbols():
+    symbol_like = "AC002480.5"
+    session = FakeSession(
+        {
+            ENSEMBL_LOOKUP.format(symbol=symbol_like): FakeResponse(status_code=404, json_data={}),
+            ENSEMBL_XREF.format(symbol=symbol_like): FakeResponse(json_data=[]),
+            ENSEMBL_XREF_NAME.format(symbol=symbol_like): FakeResponse(json_data=[]),
+        }
+    )
+    result = fetch_sequence_by_id(session, symbol_like)
+    assert result.status == "unresolved"
+    assert result.sequence == ""
+
+
+def test_fetch_sequence_by_id_does_not_retry_without_suffix_for_non_cautious_symbols():
+    symbol_like = "MSTRG.255299"
+    session = FakeSession(
+        {
+            ENSEMBL_LOOKUP.format(symbol=symbol_like): FakeResponse(status_code=404, json_data={}),
+            ENSEMBL_XREF.format(symbol=symbol_like): FakeResponse(json_data=[]),
+            ENSEMBL_XREF_NAME.format(symbol=symbol_like): FakeResponse(json_data=[]),
+        }
+    )
+    result = fetch_sequence_by_id(session, symbol_like)
+    assert result.status == "unresolved"
+    assert result.sequence == ""
 
 
 def test_fetch_sequence_by_id_uses_first_xref_candidate_for_ambiguous_symbols():
