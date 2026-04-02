@@ -7,21 +7,36 @@ from urllib.parse import quote
 
 
 ENSEMBL_LOOKUP = "https://rest.ensembl.org/lookup/symbol/homo_sapiens/{symbol}"
+ENSEMBL_LOOKUP_ID = "https://rest.ensembl.org/lookup/id/{ensembl_id}?expand=1"
 ENSEMBL_XREF = "https://rest.ensembl.org/xrefs/symbol/homo_sapiens/{symbol}"
 ENSEMBL_XREF_NAME = "https://rest.ensembl.org/xrefs/name/homo_sapiens/{symbol}"
 ENSEMBL_SEQ = "https://rest.ensembl.org/sequence/id/{ensembl_id}"
+ENSEMBL_ARCHIVE = "https://rest.ensembl.org/archive/id/{ensembl_id}"
 NCBI_EFETCH = (
     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
     "?db=nuccore&id={accession}&rettype=fasta&retmode=text"
 )
+NCBI_ESEARCH = (
+    "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+    "?db=nuccore&term={term}&retmode=json&retmax={retmax}"
+)
 VALID_NUCLEOTIDE_CHARS = set("ACGTUNRYSWKMBDHVX")
-CAUTIOUS_PREFIXES = ("AC", "AL", "AJ", "AF")
+INVALID_SEQUENCE_MARKERS = (
+    "FAILED TO UNDERSTAND ID",
+    "ERROR:",
+    "<!DOCTYPE",
+    "<HTML",
+    "</HTML",
+    "<?XML",
+)
+EMPTY_SEQUENCE_MARKERS = {"", "nan", "none", "null"}
+CAUTIOUS_PREFIXES = ("AC", "AL", "AJ", "AF", "AP")
 SAFE_VERSIONED_ID_RE = re.compile(
     r"^((?:ENS[A-Z0-9]*\d+)|(?:(?:NM|NR|XM|XR|NC|NG|NT|NW|NZ)_\d+))\.(\d+)$",
     re.I,
 )
 CAUTIOUS_SYMBOL_VERSION_RE = re.compile(
-    r"^(((?:AC|AL|AJ|AF)[A-Z0-9_-]*))\.(\d+)$",
+    r"^(((?:AC|AL|AJ|AF|AP)[A-Z0-9_-]*))\.(\d+)$",
     re.I,
 )
 SYMBOL_TRANSCRIPT_SUFFIX_RE = re.compile(r"^(.+)-(\d{3,})$")
@@ -82,6 +97,21 @@ class IdentifierRoute:
 def parse_fasta_text(text: str) -> str:
     lines = [ln.strip() for ln in str(text or "").splitlines() if ln and not ln.startswith(">")]
     return "".join(lines).replace(" ", "").strip().upper()
+
+
+def normalize_sequence_value(seq: str) -> str:
+    raw = str(seq or "").strip()
+    if not raw or raw.lower() in EMPTY_SEQUENCE_MARKERS:
+        return ""
+    upper_raw = raw.upper()
+    if any(marker in upper_raw for marker in INVALID_SEQUENCE_MARKERS):
+        return ""
+    compact = parse_fasta_text(raw) if raw.startswith(">") else "".join(raw.split()).upper()
+    return compact if _is_probable_nucleotide_sequence(compact) else ""
+
+
+def has_usable_sequence_value(seq: str) -> bool:
+    return bool(normalize_sequence_value(seq))
 
 
 def _is_probable_nucleotide_sequence(seq: str) -> bool:
@@ -158,7 +188,7 @@ def detect_id_route(raw_id: str) -> IdentifierRoute:
     if CAUTIOUS_SYMBOL_VERSION_RE.match(rid):
         return IdentifierRoute(rid, "cautious_clone_symbol_versioned", "ensembl_symbol", "symbol", rid)
     if re.match(r"^(?:LOC)\d+$", upper):
-        return IdentifierRoute(rid, "loc_symbol", "ensembl_symbol", "symbol", rid)
+        return IdentifierRoute(rid, "loc_symbol", "ncbi_symbol_search", "symbol", rid)
     if re.match(r"^(?:LNC-|LNCV|LNCRNA|LNC_)", upper):
         return IdentifierRoute(rid, "catalog_symbol", "ensembl_symbol", "symbol", rid)
     if re.match(r"^[A-Z0-9-]{2,6}$", upper):
@@ -197,7 +227,7 @@ def _result(
     return SequenceFetchResult(
         query_id=str(query_id or "").strip(),
         id_type=id_type,
-        sequence=str(sequence or "").strip().upper(),
+        sequence=normalize_sequence_value(sequence),
         status=status,
         detail=str(detail or "").strip(),
         resolved_id=str(resolved_id or "").strip(),
@@ -219,11 +249,9 @@ def fetch_ensembl_sequence(session, ensembl_id: str, *, timeout: int = 10, query
         return _result(qid, "ensembl", status="unresolved", detail=f"ensembl_seq_err:{exc}", resolved_id=eid)
     if response.status_code != 200:
         return _result(qid, "ensembl", status="unresolved", detail=f"ensembl_seq_status:{response.status_code}", resolved_id=eid)
-    seq = "".join(str(response.text or "").split()).upper()
-    if not seq or seq.startswith("{"):
+    seq = normalize_sequence_value(response.text)
+    if not seq:
         return _result(qid, "ensembl", status="unresolved", detail=f"ensembl_seq_empty:{eid}", resolved_id=eid)
-    if not _is_probable_nucleotide_sequence(seq):
-        return _result(qid, "ensembl", status="unresolved", detail=f"ensembl_seq_invalid_payload:{eid}", resolved_id=eid)
     return _result(qid, "ensembl", sequence=seq, status="ensembl_fetched", detail=f"ensembl_seq:{eid}", resolved_id=eid)
 
 
@@ -239,12 +267,236 @@ def fetch_ncbi_accession(session, accession: str, *, timeout: int = 10, query_id
         return _result(qid, "accession", status="unresolved", detail=f"ncbi_err:{exc}")
     if response.status_code != 200:
         return _result(qid, "accession", status="unresolved", detail=f"ncbi_status:{response.status_code}")
-    seq = parse_fasta_text(response.text)
+    seq = normalize_sequence_value(response.text)
     if not seq:
         return _result(qid, "accession", status="unresolved", detail=f"ncbi_empty:{acc}")
-    if not _is_probable_nucleotide_sequence(seq):
-        return _result(qid, "accession", status="unresolved", detail=f"ncbi_invalid_payload:{acc}")
     return _result(qid, "accession", sequence=seq, status="accession_fetched", detail=f"ncbi:{acc}", resolved_id=acc)
+
+
+def _dedupe_nonempty(values) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        cleaned = str(value or "").strip()
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            deduped.append(cleaned)
+    return deduped
+
+
+def _collect_ensembl_ids(obj, out: list[str], *, depth: int = 0, max_depth: int = 4) -> None:
+    if depth > max_depth:
+        return
+    if isinstance(obj, str):
+        value = obj.strip()
+        if value.upper().startswith("ENS"):
+            out.append(value)
+        return
+    if isinstance(obj, dict):
+        for value in obj.values():
+            _collect_ensembl_ids(value, out, depth=depth + 1, max_depth=max_depth)
+        return
+    if isinstance(obj, (list, tuple)):
+        for value in obj:
+            _collect_ensembl_ids(value, out, depth=depth + 1, max_depth=max_depth)
+
+
+def _lookup_ensembl_candidates(session, ensembl_id: str, *, timeout: int = 10) -> tuple[list[str], list[str]]:
+    eid = str(ensembl_id or "").strip()
+    response, exc = _request_with_retry(
+        session,
+        ENSEMBL_LOOKUP_ID.format(ensembl_id=quote(eid, safe="")),
+        headers={"Accept": "application/json"},
+        timeout=timeout,
+    )
+    if exc is not None:
+        return [], [f"ensembl_lookup_id_err:{exc}"]
+    if response.status_code != 200:
+        return [], [f"ensembl_lookup_id_status:{response.status_code}"]
+    try:
+        payload = response.json() or {}
+    except Exception as exc:
+        return [], [f"ensembl_lookup_id_json_err:{exc}"]
+
+    candidates: list[str] = []
+    canonical = str(payload.get("canonical_transcript") or "").strip()
+    if canonical:
+        candidates.append(strip_safe_version_suffix(canonical)[0])
+
+    if eid.upper().startswith("ENSG"):
+        for item in payload.get("Transcript") or payload.get("transcripts") or []:
+            candidates.append(str(item.get("id") or "").strip())
+    resolved_id = str(payload.get("id") or "").strip()
+    if resolved_id and resolved_id != eid:
+        candidates.append(resolved_id)
+    return _dedupe_nonempty([cid for cid in candidates if cid != eid]), []
+
+
+def _archive_ensembl_candidates(session, ensembl_id: str, *, timeout: int = 10) -> tuple[list[str], list[str]]:
+    eid = str(ensembl_id or "").strip()
+    response, exc = _request_with_retry(
+        session,
+        ENSEMBL_ARCHIVE.format(ensembl_id=quote(eid, safe="")),
+        headers={"Accept": "application/json"},
+        timeout=timeout,
+    )
+    if exc is not None:
+        return [], [f"ensembl_archive_err:{exc}"]
+    if response.status_code != 200:
+        return [], [f"ensembl_archive_status:{response.status_code}"]
+    try:
+        payload = response.json() or {}
+    except Exception as exc:
+        return [], [f"ensembl_archive_json_err:{exc}"]
+
+    candidates: list[str] = []
+    _collect_ensembl_ids(payload, candidates)
+    filtered = []
+    tried = {eid, strip_safe_version_suffix(eid)[0]}
+    for candidate in _dedupe_nonempty(candidates):
+        if candidate not in tried:
+            filtered.append(candidate)
+    return filtered, []
+
+
+def _resolve_ensembl_fallback_candidates(
+    session,
+    query_id: str,
+    candidates: list[str],
+    *,
+    timeout: int,
+    status_base: str,
+    detail_prefix: str,
+) -> SequenceFetchResult:
+    candidate_ids = _dedupe_nonempty(candidates)
+    attempt_notes: list[str] = []
+    for idx, candidate_id in enumerate(candidate_ids):
+        seq_result = fetch_ensembl_sequence(session, candidate_id, timeout=timeout, query_id=query_id)
+        if seq_result.sequence:
+            alternatives = tuple(cid for cid in candidate_ids if cid != candidate_id)
+            status = f"{status_base}_first_candidate_used" if len(candidate_ids) > 1 else status_base
+            detail = f"{detail_prefix}:{query_id}->{candidate_id}"
+            if idx:
+                detail = f"candidate_index:{idx}; {detail}"
+            if alternatives:
+                detail = f"{detail}; alternatives:{'|'.join(alternatives)}"
+            return _result(
+                query_id,
+                "ensembl",
+                sequence=seq_result.sequence,
+                status=status,
+                detail=detail,
+                resolved_id=candidate_id,
+                alternative_ids=alternatives,
+                source=detail_prefix,
+            )
+        attempt_notes.append(f"{candidate_id}:{seq_result.detail}")
+    detail = f"{detail_prefix}_candidates:{'|'.join(candidate_ids)}"
+    if attempt_notes:
+        detail = f"{detail}; {'; '.join(attempt_notes)}"
+    return _result(query_id, "ensembl", status="unresolved", detail=detail)
+
+
+def _ncbi_symbol_search_terms(route: IdentifierRoute, symbol: str) -> list[tuple[str, str]]:
+    exact = f'"{symbol}"'
+    human_rna = '"Homo sapiens"[Organism] AND biomol_rna[PROP]'
+    gene_name = f"{exact}[Gene Name] AND {human_rna}"
+    all_fields = f"{exact}[All Fields] AND {human_rna}"
+    queries: list[tuple[str, str]] = []
+    if route.family == "loc_symbol":
+        queries.extend(
+            [
+                ("ncbi_gene_name_refseq_rna", f"{gene_name} AND srcdb_refseq[PROP]"),
+                ("ncbi_gene_name_rna", gene_name),
+                ("ncbi_all_fields_refseq_rna", f"{all_fields} AND srcdb_refseq[PROP]"),
+                ("ncbi_all_fields_rna", all_fields),
+            ]
+        )
+    else:
+        queries.extend(
+            [
+                ("ncbi_gene_name_refseq_rna", f"{gene_name} AND srcdb_refseq[PROP]"),
+                ("ncbi_gene_name_rna", gene_name),
+                ("ncbi_all_fields_refseq_rna", f"{all_fields} AND srcdb_refseq[PROP]"),
+                ("ncbi_all_fields_rna", all_fields),
+            ]
+        )
+    deduped: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for label, query in queries:
+        if query not in seen:
+            seen.add(query)
+            deduped.append((label, query))
+    return deduped
+
+
+def resolve_symbol_via_ncbi_search(
+    session,
+    symbol: str,
+    *,
+    timeout: int = 10,
+    route: IdentifierRoute | None = None,
+) -> SequenceFetchResult:
+    sym = str(symbol or "").strip()
+    route = route or detect_id_route(sym)
+    notes: list[str] = []
+    candidate_ids: list[str] = []
+    search_label = ""
+    for label, query in _ncbi_symbol_search_terms(route, sym):
+        response, exc = _request_with_retry(
+            session,
+            NCBI_ESEARCH.format(term=quote(query, safe=""), retmax=5),
+            timeout=timeout,
+        )
+        if exc is not None:
+            notes.append(f"{label}_err:{exc}")
+            continue
+        if response.status_code != 200:
+            notes.append(f"{label}_status:{response.status_code}")
+            continue
+        try:
+            payload = response.json() or {}
+        except Exception as exc:
+            notes.append(f"{label}_json_err:{exc}")
+            continue
+        id_list = payload.get("esearchresult", {}).get("idlist") or []
+        candidate_ids = _dedupe_nonempty(id_list)
+        if candidate_ids:
+            search_label = label
+            break
+        notes.append(f"{label}_empty")
+
+    if not candidate_ids:
+        detail = "ncbi_symbol_search_empty"
+        if notes:
+            detail = f"{detail}; {'; '.join(notes)}"
+        return _result(sym, "symbol", status="unresolved", detail=detail, source="ncbi_esearch_nuccore")
+
+    attempt_notes: list[str] = []
+    for idx, candidate_id in enumerate(candidate_ids):
+        seq_result = fetch_ncbi_accession(session, candidate_id, timeout=timeout, query_id=sym)
+        if seq_result.sequence:
+            alternatives = tuple(cid for cid in candidate_ids if cid != candidate_id)
+            status = "symbol_ncbi_search_first_candidate_used" if len(candidate_ids) > 1 else "symbol_ncbi_search_resolved"
+            detail = f"{search_label}:{sym}->{candidate_id}"
+            if idx:
+                detail = f"candidate_index:{idx}; {detail}"
+            if alternatives:
+                detail = f"{detail}; alternatives:{'|'.join(alternatives)}"
+            return _result(
+                sym,
+                "symbol",
+                sequence=seq_result.sequence,
+                status=status,
+                detail=detail,
+                resolved_id=candidate_id,
+                alternative_ids=alternatives,
+                source="ncbi_esearch_nuccore",
+            )
+        attempt_notes.append(f"{candidate_id}:{seq_result.detail}")
+
+    detail = f"{search_label}:{sym}; {'; '.join(attempt_notes)}"
+    return _result(sym, "symbol", status="unresolved", detail=detail, source="ncbi_esearch_nuccore")
 
 
 def _xref_candidates(session, symbol: str, *, timeout: int = 10) -> tuple[list[tuple[str, str]], list[str]]:
@@ -279,8 +531,16 @@ def _xref_candidates(session, symbol: str, *, timeout: int = 10) -> tuple[list[t
     return candidates, notes
 
 
-def resolve_symbol(session, symbol: str, *, timeout: int = 10) -> SequenceFetchResult:
+def resolve_symbol(
+    session,
+    symbol: str,
+    *,
+    timeout: int = 10,
+    route: IdentifierRoute | None = None,
+    allow_ncbi_fallback: bool = True,
+) -> SequenceFetchResult:
     sym = str(symbol or "").strip()
+    route = route or detect_id_route(sym)
     symbol_q = quote(sym, safe="")
     response, exc = _request_with_retry(
         session,
@@ -345,12 +605,21 @@ def resolve_symbol(session, symbol: str, *, timeout: int = 10) -> SequenceFetchR
             alternative_ids=alternative_ids,
             source=source,
         )
-    if response.status_code in {400, 404}:
-        detail = f"symbol_lookup_status:{response.status_code}"
-        if notes:
-            detail = f"{detail}; {'; '.join(notes)}"
-        return _result(sym, "symbol", status="unresolved", detail=detail)
-    return _result(sym, "symbol", status="unresolved", detail=f"symbol_lookup_status:{response.status_code}")
+    detail = f"symbol_lookup_status:{response.status_code}"
+    if notes:
+        detail = f"{detail}; {'; '.join(notes)}"
+    if allow_ncbi_fallback and route.family in {
+        "loc_symbol",
+        "catalog_symbol",
+        "generic_symbol",
+        "family_symbol",
+        "cautious_clone_symbol_versioned",
+    }:
+        ncbi_result = resolve_symbol_via_ncbi_search(session, sym, timeout=timeout, route=route)
+        if ncbi_result.sequence:
+            return ncbi_result
+        detail = f"{detail}; {ncbi_result.detail}"
+    return _result(sym, "symbol", status="unresolved", detail=detail)
 
 
 def fetch_sequence_by_id(session, raw_id: str, *, timeout: int = 10) -> SequenceFetchResult:
@@ -361,24 +630,80 @@ def fetch_sequence_by_id(session, raw_id: str, *, timeout: int = 10) -> Sequence
     if route.namespace == "ensembl":
         result = fetch_ensembl_sequence(session, rid, timeout=timeout)
         base_id, can_retry = strip_safe_version_suffix(rid)
-        if result.sequence or not can_retry or base_id == rid:
+        if result.sequence:
             return result
-        retry = fetch_ensembl_sequence(session, base_id, timeout=timeout, query_id=rid)
-        if retry.sequence:
+        lookup_target = rid
+        if can_retry and base_id != rid:
+            retry = fetch_ensembl_sequence(session, base_id, timeout=timeout, query_id=rid)
+            if retry.sequence:
+                return _result(
+                    rid,
+                    "ensembl",
+                    sequence=retry.sequence,
+                    status="ensembl_version_retry_fetched",
+                    detail=f"retry_without_version:{rid}->{base_id}",
+                    resolved_id=base_id,
+                )
+            fallback_result = _result(
+                rid,
+                "ensembl",
+                status="unresolved",
+                detail=f"{result.detail}; retry_without_version:{rid}->{base_id}; {retry.detail}",
+            )
+            lookup_target = base_id
+        else:
+            fallback_result = result
+        lookup_candidates, lookup_notes = _lookup_ensembl_candidates(session, lookup_target, timeout=timeout)
+        if lookup_candidates:
+            lookup_result = _resolve_ensembl_fallback_candidates(
+                session,
+                rid,
+                lookup_candidates,
+                timeout=timeout,
+                status_base="ensembl_lookup_transcript_resolved",
+                detail_prefix="ensembl_lookup_transcript",
+            )
+            if lookup_result.sequence:
+                return lookup_result
+            fallback_result = _result(
+                rid,
+                "ensembl",
+                status="unresolved",
+                detail=f"{fallback_result.detail}; {lookup_result.detail}",
+            )
+        elif lookup_notes:
+            fallback_result = _result(
+                rid,
+                "ensembl",
+                status="unresolved",
+                detail=f"{fallback_result.detail}; {'; '.join(lookup_notes)}",
+            )
+        archive_candidates, archive_notes = _archive_ensembl_candidates(session, lookup_target, timeout=timeout)
+        if archive_candidates:
+            archive_result = _resolve_ensembl_fallback_candidates(
+                session,
+                rid,
+                archive_candidates,
+                timeout=timeout,
+                status_base="ensembl_archive_resolved",
+                detail_prefix="ensembl_archive",
+            )
+            if archive_result.sequence:
+                return archive_result
             return _result(
                 rid,
                 "ensembl",
-                sequence=retry.sequence,
-                status="ensembl_version_retry_fetched",
-                detail=f"retry_without_version:{rid}->{base_id}",
-                resolved_id=base_id,
+                status="unresolved",
+                detail=f"{fallback_result.detail}; {archive_result.detail}",
             )
-        return _result(
-            rid,
-            "ensembl",
-            status="unresolved",
-            detail=f"{result.detail}; retry_without_version:{rid}->{base_id}; {retry.detail}",
-        )
+        if archive_notes:
+            return _result(
+                rid,
+                "ensembl",
+                status="unresolved",
+                detail=f"{fallback_result.detail}; {'; '.join(archive_notes)}",
+            )
+        return fallback_result
     if route.namespace == "ncbi_nuccore":
         result = fetch_ncbi_accession(session, rid, timeout=timeout)
         base_id, can_retry = strip_safe_version_suffix(rid)
@@ -400,12 +725,21 @@ def fetch_sequence_by_id(session, raw_id: str, *, timeout: int = 10) -> Sequence
             status="unresolved",
             detail=f"{result.detail}; retry_without_version:{rid}->{base_id}; {retry.detail}",
         )
+    if route.namespace == "ncbi_symbol_search":
+        result = resolve_symbol_via_ncbi_search(session, rid, timeout=timeout, route=route)
+        if result.sequence:
+            return result
+        variants = _symbol_route_variants(route)
+        if not variants:
+            return result
+        variant_result = _retry_symbol_variants(session, route, result, timeout=timeout, seen={rid})
+        return variant_result if variant_result is not None else result
     return _fetch_symbol_like_sequence(session, route, timeout=timeout, seen={rid})
 
 
 def _fetch_symbol_like_sequence(session, route: IdentifierRoute, *, timeout: int, seen: set[str]) -> SequenceFetchResult:
     rid = route.normalized_id
-    result = resolve_symbol(session, rid, timeout=timeout)
+    result = resolve_symbol(session, rid, timeout=timeout, route=route)
     variants = _symbol_route_variants(route)
     if result.sequence or not variants:
         variant_result = _retry_symbol_variants(session, route, result, timeout=timeout, seen=seen)

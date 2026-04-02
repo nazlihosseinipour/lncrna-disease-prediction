@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,13 +10,17 @@ if str(ROOT) not in sys.path:
 
 from mainfolder.utils.sequence_fetch import (
     ENSEMBL_LOOKUP,
+    ENSEMBL_LOOKUP_ID,
     ENSEMBL_SEQ,
     ENSEMBL_XREF,
     ENSEMBL_XREF_NAME,
+    ENSEMBL_ARCHIVE,
     NCBI_EFETCH,
+    NCBI_ESEARCH,
     detect_id_kind,
     detect_id_route,
     fetch_sequence_by_id,
+    normalize_sequence_value,
 )
 
 
@@ -46,6 +51,24 @@ class FakeSession:
         return value
 
 
+def ncbi_search_url(term: str, retmax: int = 5) -> str:
+    return NCBI_ESEARCH.format(term=quote(term, safe=""), retmax=retmax)
+
+
+def ncbi_symbol_search_urls(symbol: str, *, loc: bool = False) -> list[str]:
+    exact = f'"{symbol}"'
+    human_rna = '"Homo sapiens"[Organism] AND biomol_rna[PROP]'
+    gene_name = f"{exact}[Gene Name] AND {human_rna}"
+    all_fields = f"{exact}[All Fields] AND {human_rna}"
+    queries = [
+        f"{gene_name} AND srcdb_refseq[PROP]",
+        gene_name,
+        f"{all_fields} AND srcdb_refseq[PROP]",
+        all_fields,
+    ]
+    return [ncbi_search_url(query) for query in queries]
+
+
 def test_detect_id_kind_classifies_expected_cases():
     assert detect_id_kind("ENSG00000251562") == "ensembl"
     assert detect_id_kind("DQ600483") == "accession"
@@ -72,7 +95,7 @@ def test_detect_id_route_assigns_expected_families_and_namespaces():
 
     loc = detect_id_route("LOC100127888")
     assert loc.family == "loc_symbol"
-    assert loc.namespace == "ensembl_symbol"
+    assert loc.namespace == "ncbi_symbol_search"
     assert loc.id_type == "symbol"
 
     catalog = detect_id_route("lnc-ABCC5-2:1")
@@ -154,6 +177,11 @@ def test_fetch_sequence_by_id_rejects_ncbi_error_payload():
     result = fetch_sequence_by_id(session, accession)
     assert result.status == "unresolved"
     assert result.sequence == ""
+
+
+def test_normalize_sequence_value_rejects_cached_error_payloads():
+    assert normalize_sequence_value("ERROR: F A I L E D TO UNDERSTAND ID") == ""
+    assert normalize_sequence_value(">id\nA U G C") == "AUGC"
 
 
 def test_fetch_sequence_by_id_rejects_ensembl_error_payload():
@@ -301,13 +329,14 @@ def test_fetch_sequence_by_id_retries_symbol_variants_with_colon_suffix():
 
 def test_fetch_sequence_by_id_does_not_retry_without_suffix_for_ac_style_symbols():
     symbol_like = "AC002480.5"
-    session = FakeSession(
-        {
-            ENSEMBL_LOOKUP.format(symbol=symbol_like): FakeResponse(status_code=404, json_data={}),
-            ENSEMBL_XREF.format(symbol=symbol_like): FakeResponse(json_data=[]),
-            ENSEMBL_XREF_NAME.format(symbol=symbol_like): FakeResponse(json_data=[]),
-        }
-    )
+    responses = {
+        ENSEMBL_LOOKUP.format(symbol=symbol_like): FakeResponse(status_code=404, json_data={}),
+        ENSEMBL_XREF.format(symbol=symbol_like): FakeResponse(json_data=[]),
+        ENSEMBL_XREF_NAME.format(symbol=symbol_like): FakeResponse(json_data=[]),
+    }
+    for url in ncbi_symbol_search_urls(symbol_like):
+        responses[url] = FakeResponse(json_data={"esearchresult": {"idlist": []}})
+    session = FakeSession(responses)
     result = fetch_sequence_by_id(session, symbol_like)
     assert result.status == "unresolved"
     assert result.sequence == ""
@@ -315,13 +344,14 @@ def test_fetch_sequence_by_id_does_not_retry_without_suffix_for_ac_style_symbols
 
 def test_fetch_sequence_by_id_does_not_retry_without_suffix_for_non_cautious_symbols():
     symbol_like = "MSTRG.255299"
-    session = FakeSession(
-        {
-            ENSEMBL_LOOKUP.format(symbol=symbol_like): FakeResponse(status_code=404, json_data={}),
-            ENSEMBL_XREF.format(symbol=symbol_like): FakeResponse(json_data=[]),
-            ENSEMBL_XREF_NAME.format(symbol=symbol_like): FakeResponse(json_data=[]),
-        }
-    )
+    responses = {
+        ENSEMBL_LOOKUP.format(symbol=symbol_like): FakeResponse(status_code=404, json_data={}),
+        ENSEMBL_XREF.format(symbol=symbol_like): FakeResponse(json_data=[]),
+        ENSEMBL_XREF_NAME.format(symbol=symbol_like): FakeResponse(json_data=[]),
+    }
+    for url in ncbi_symbol_search_urls(symbol_like):
+        responses[url] = FakeResponse(json_data={"esearchresult": {"idlist": []}})
+    session = FakeSession(responses)
     result = fetch_sequence_by_id(session, symbol_like)
     assert result.status == "unresolved"
     assert result.sequence == ""
@@ -374,13 +404,71 @@ def test_fetch_sequence_by_id_keeps_alternatives_when_first_candidate_fails():
 
 def test_fetch_sequence_by_id_marks_missing_symbols_unresolved():
     symbol = "NOT_A_REAL_SYMBOL"
-    session = FakeSession(
-        {
-            ENSEMBL_LOOKUP.format(symbol=symbol): FakeResponse(status_code=404, json_data={}),
-            ENSEMBL_XREF.format(symbol=symbol): FakeResponse(json_data=[]),
-            ENSEMBL_XREF_NAME.format(symbol=symbol): FakeResponse(json_data=[]),
-        }
-    )
+    responses = {
+        ENSEMBL_LOOKUP.format(symbol=symbol): FakeResponse(status_code=404, json_data={}),
+        ENSEMBL_XREF.format(symbol=symbol): FakeResponse(json_data=[]),
+        ENSEMBL_XREF_NAME.format(symbol=symbol): FakeResponse(json_data=[]),
+    }
+    for url in ncbi_symbol_search_urls(symbol):
+        responses[url] = FakeResponse(json_data={"esearchresult": {"idlist": []}})
+    session = FakeSession(responses)
     result = fetch_sequence_by_id(session, symbol)
     assert result.status == "unresolved"
     assert result.sequence == ""
+
+
+def test_fetch_sequence_by_id_resolves_loc_symbols_via_ncbi_search():
+    symbol = "LOC100127888"
+    nuccore_id = "123456"
+    responses = {
+        ncbi_search_url(
+            '"LOC100127888"[Gene Name] AND "Homo sapiens"[Organism] AND biomol_rna[PROP] AND srcdb_refseq[PROP]'
+        ): FakeResponse(json_data={"esearchresult": {"idlist": [nuccore_id]}}),
+        NCBI_EFETCH.format(accession=nuccore_id): FakeResponse(text=">x\nAUGCUU"),
+    }
+    session = FakeSession(responses)
+    result = fetch_sequence_by_id(session, symbol)
+    assert result.status == "symbol_ncbi_search_resolved"
+    assert result.sequence == "AUGCUU"
+    assert result.resolved_id == nuccore_id
+
+
+def test_fetch_sequence_by_id_uses_ensembl_lookup_transcript_fallback():
+    gene_id = "ENSG00000230971"
+    transcript_id = "ENST00000456789"
+    session = FakeSession(
+        {
+            ENSEMBL_SEQ.format(ensembl_id=gene_id): FakeResponse(status_code=400, text="bad request"),
+            ENSEMBL_LOOKUP_ID.format(ensembl_id=gene_id): FakeResponse(
+                json_data={
+                    "id": gene_id,
+                    "canonical_transcript": f"{transcript_id}.2",
+                    "Transcript": [{"id": transcript_id}],
+                }
+            ),
+            ENSEMBL_SEQ.format(ensembl_id=transcript_id): FakeResponse(text="AUGCUU"),
+        }
+    )
+    result = fetch_sequence_by_id(session, gene_id)
+    assert result.status == "ensembl_lookup_transcript_resolved"
+    assert result.sequence == "AUGCUU"
+    assert result.resolved_id == transcript_id
+
+
+def test_fetch_sequence_by_id_uses_ensembl_archive_fallback():
+    transcript_id = "ENST00000412204.1"
+    base_id = "ENST00000412204"
+    replacement_id = "ENST00000622222"
+    session = FakeSession(
+        {
+            ENSEMBL_SEQ.format(ensembl_id=transcript_id): FakeResponse(status_code=400, text="bad request"),
+            ENSEMBL_SEQ.format(ensembl_id=base_id): FakeResponse(status_code=400, text="bad request"),
+            ENSEMBL_LOOKUP_ID.format(ensembl_id=base_id): FakeResponse(status_code=404, json_data={}),
+            ENSEMBL_ARCHIVE.format(ensembl_id=base_id): FakeResponse(json_data={"id": base_id, "possible_replacement": replacement_id}),
+            ENSEMBL_SEQ.format(ensembl_id=replacement_id): FakeResponse(text="AUGCUU"),
+        }
+    )
+    result = fetch_sequence_by_id(session, transcript_id)
+    assert result.status == "ensembl_archive_resolved"
+    assert result.sequence == "AUGCUU"
+    assert result.resolved_id == replacement_id
