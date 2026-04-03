@@ -20,7 +20,7 @@ import pandas as pd
 from mainfolder.utils.loader import load_sequences_csv, preprocess_sequences
 from mainfolder.core.feature_extractor import FeatureExtractor
 from mainfolder.features.rna_features import RnaFeatures
-from mainfolder.utils.utils import ALPHABET
+from mainfolder.utils.utils import ALPHABET, normalize_rna_dinuc_props
 
 
 def load_props_csv(path: str):
@@ -38,7 +38,7 @@ def load_props_csv(path: str):
         props[dinuc] = vals
     if not props:
         raise ValueError("props_csv contained no rows")
-    return props
+    return normalize_rna_dinuc_props(props)
 
 
 def normalize_id_seq(csv_path: Path):

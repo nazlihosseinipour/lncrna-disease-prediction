@@ -73,7 +73,7 @@ def main():
     print(f"[info] diseases: {len(diseases)}, lncRNAs (rows in Y): {len(Y)}")
     print(f"[info] mapped diseases with DO terms: {mapped_count}/{len(diseases)} | unmapped={unmapped_count}")
     if unmapped_count:
-        print("[warn] Unmapped diseases receive empty term sets; their ontology-based off-diagonal similarity will be 0.")
+        print("[warn] Unmapped diseases receive empty term sets; their ontology-based similarity will be 0, including the diagonal.")
 
     # 14: disease x disease similarity (BMA) using actual Wang term similarity.
     # Unmapped diseases get empty term sets, which yields 0 off-diagonal similarity instead of a bogus fallback.
@@ -92,7 +92,7 @@ def main():
         t1 = first_terms[d1]
         for d2 in diseases:
             t2 = first_terms[d2]
-            if d1 == d2:
+            if d1 == d2 and t1:
                 row.append(1.0)
             elif not t1 or not t2:
                 row.append(0.0)

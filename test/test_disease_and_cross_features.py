@@ -60,6 +60,15 @@ def test_disease_lfs_from_Y_basic():
     assert np.allclose(np.diag(LFS), 1.0)
 
 
+def test_unmapped_disease_similarity_stays_zero():
+    df = DiseaseFeatures(toy_dag(), edge_weight=0.8)
+    K = df.disease_similarity_bma({"D1": [], "D2": ["A"]}, diseases_order=["D1", "D2"])
+    assert K.loc["D1", "D1"] == 0.0
+    assert K.loc["D2", "D2"] == 1.0
+    assert K.loc["D1", "D2"] == 0.0
+    assert K.loc["D2", "D1"] == 0.0
+
+
 def test_cross_gip_outputs_shape_and_symmetry():
     mat = toy_matrix.ToyMatrix().getData()  # lncRNA x disease matrix
     gip_lnc, gip_dis = CrossFeatures.calculate_gip_lncRNA_and_dis(mat)

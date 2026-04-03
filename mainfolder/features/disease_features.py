@@ -127,8 +127,8 @@ class DiseaseFeatures(FeatureModule):
             return (a + b) / 2.0
 
         for i in range(n):
-            K[i, i] = 1.0
             Ti = termsets[diseases[i]]
+            K[i, i] = 1.0 if Ti else 0.0
             for j in range(i + 1, n):
                 Tj = termsets[diseases[j]]
                 K[i, j] = K[j, i] = bma(Ti, Tj)

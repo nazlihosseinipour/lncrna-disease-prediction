@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from mainfolder.features.rna_features import RnaFeatures
+from mainfolder.utils.utils import DINUCS
 
 
 
@@ -56,3 +57,21 @@ def test_zcurve_and_gap_features():
     labels_md, X_md = RnaFeatures.monoDiKGap_matrix(seqs, k_gap=0, normalize=True, return_format="matrix")
     assert len(labels_md) == 64
     assert math.isclose(sum(X_md[0]), 1.0, rel_tol=1e-9, abs_tol=1e-9)
+
+
+def test_dinuc_prop_methods_fail_fast_on_incomplete_props():
+    seqs = ["AUGCUUAGC"]
+    props = {dinuc: [float(i)] for i, dinuc in enumerate(DINUCS) if dinuc != "UU"}
+
+    for fn, kwargs in (
+        (RnaFeatures.psednc_matrix, {"lam": 2, "w": 0.5}),
+        (RnaFeatures.di_auto_cov_matrix, {"L": 2}),
+        (RnaFeatures.di_cross_cov_matrix, {"L": 2}),
+        (RnaFeatures.di_acc_matrix, {"L": 2}),
+    ):
+        try:
+            fn(seqs, props=props, return_format="matrix", **kwargs)
+        except ValueError as exc:
+            assert "all 16 RNA dinucleotides" in str(exc)
+        else:
+            raise AssertionError(f"{fn.__name__} should fail on incomplete props")

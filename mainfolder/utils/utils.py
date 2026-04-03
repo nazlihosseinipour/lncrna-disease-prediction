@@ -12,6 +12,53 @@ ALPHABET = ("A", "C", "G", "U")
 COMP_TRANS = str.maketrans({"A": "U", "U": "A", "C": "G", "G": "C"})
 DINUCS = ["".join(p) for p in itertools.product(ALPHABET, repeat=2)]
 
+
+def normalize_rna_dinuc_props(props: Dict[str, List[float]]) -> Dict[str, List[float]]:
+    """
+    Validate and normalize a dinucleotide-property mapping to the RNA alphabet.
+
+    Keys are uppercased and any DNA-style T is converted to U. The returned
+    mapping must cover all 16 RNA dinucleotides with uniform-length vectors.
+    """
+    if not props:
+        raise ValueError("props cannot be empty.")
+
+    normalized: Dict[str, List[float]] = {}
+    bad_keys: List[str] = []
+    duplicate_keys: List[str] = []
+    vector_lengths = set()
+
+    for raw_key, raw_vals in props.items():
+        key = str(raw_key).strip().upper().replace("T", "U")
+        if len(key) != 2 or any(ch not in ALPHABET for ch in key):
+            bad_keys.append(str(raw_key))
+            continue
+        vals = list(raw_vals)
+        vector_lengths.add(len(vals))
+        if key in normalized:
+            duplicate_keys.append(key)
+            continue
+        normalized[key] = vals
+
+    if bad_keys:
+        raise ValueError(f"props has invalid dinucleotide keys: {bad_keys[:5]}...")
+    if duplicate_keys:
+        raise ValueError(
+            "props contains duplicate dinucleotide keys after T->U normalization: "
+            f"{duplicate_keys[:5]}..."
+        )
+    if len(vector_lengths) != 1:
+        raise ValueError("all property vectors in props must have the same length.")
+
+    missing = [dinuc for dinuc in DINUCS if dinuc not in normalized]
+    if missing:
+        raise ValueError(
+            "props must contain all 16 RNA dinucleotides. "
+            f"Missing: {missing[:8]}..."
+        )
+
+    return normalized
+
 def revcomp(s: str) -> str:
     """Reverse-complement in RNA alphabet (A<->U, C<->G)."""
     return _clean(s).translate(COMP_TRANS)[::-1]
@@ -83,7 +130,13 @@ def _dinuc_properties(seq: str, props: Dict[str, List[float]]) -> List[List[floa
         return []
 
     dinucs = [s[i:i+2] for i in range(n-1)]
-    return [props[d] for d in dinucs if d in props]
+    missing = [d for d in dict.fromkeys(dinucs) if d not in props]
+    if missing:
+        raise ValueError(
+            "props is missing dinucleotide entries required for this sequence: "
+            f"{missing[:8]}..."
+        )
+    return [props[d] for d in dinucs]
 
 
 def describe_methods(cls: Type) -> str:

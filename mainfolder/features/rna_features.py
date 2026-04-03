@@ -5,7 +5,7 @@ from collections import Counter
 from mainfolder.utils.utils import (
     ALPHABET, DINUCS, _clean, 
     make_columns, make_canonical_columns,
-    _kmer_row, _canonical_kmer_row, _dinuc_properties)
+    _kmer_row, _canonical_kmer_row, _dinuc_properties, normalize_rna_dinuc_props)
 from mainfolder.utils.validators import (
     require_seqs, require_k, require_return_format, 
     require_sample_ids_len, require_lam , 
@@ -40,6 +40,13 @@ class RnaFeatures(FeatureModule):
         if bad:
             raise ValueError(f"sequence contains invalid characters after cleaning: {sorted(set(bad))}")
         return s
+
+    @staticmethod
+    def _validated_props(props: Dict[str, List[float]], *, context: str) -> Dict[str, List[float]]:
+        try:
+            return normalize_rna_dinuc_props(props)
+        except ValueError as exc:
+            raise ValueError(f"{context}: {exc}") from exc
 
 
     # (1) K-mer
@@ -118,14 +125,7 @@ class RnaFeatures(FeatureModule):
         require_lam(lam)
         require_weight(w)
         # props checks (RNA-specific): non-empty, uniform lengths, valid keys
-        if not props:
-            raise ValueError("props cannot be empty for PseDNC.")
-        lens = {len(v) for v in props.values()}
-        if len(lens) != 1:
-            raise ValueError("all property vectors in props must have the same length.")
-        bad = [k for k in props.keys() if len(k) != 2 or any(ch not in "ACGU" for ch in k)]
-        if bad:
-            raise ValueError(f"props has invalid dinucleotide keys: {bad[:5]}...")
+        props = RnaFeatures._validated_props(props, context="PseDNC props")
         # seqs
         seqs = [RnaFeatures._clean_and_check(x) for x in seqs]
         if not seqs:
@@ -185,14 +185,7 @@ class RnaFeatures(FeatureModule):
         require_return_format(return_format)
         require_seqs(seqs)
         require_L(L)
-        if not props:
-            raise ValueError("props cannot be empty for DAC.")
-        lens = {len(v) for v in props.values()}
-        if len(lens) != 1:
-            raise ValueError("all property vectors in props must have the same length.")
-        bad = [k for k in props.keys() if len(k) != 2 or any(ch not in "ACGU" for ch in k)]
-        if bad:
-            raise ValueError(f"props has invalid dinucleotide keys: {bad[:5]}...")
+        props = RnaFeatures._validated_props(props, context="DAC props")
         seqs = [RnaFeatures._clean_and_check(x) for x in seqs]
         if not seqs:
             raise ValueError("seqs is empty.")
@@ -244,19 +237,10 @@ class RnaFeatures(FeatureModule):
         require_return_format(return_format)
         require_seqs(seqs)
         require_L(L)
-        if not props:
-            raise ValueError("props cannot be empty for DCC.")
-        lens = {len(v) for v in props.values()}
-        if len(lens) != 1:
-            raise ValueError("all property vectors in props must have the same length.")
-        bad = [k for k in props.keys() if len(k) != 2 or any(ch not in "ACGU" for ch in k)]
-        if bad:
-            raise ValueError(f"props has invalid dinucleotide keys: {bad[:5]}...")
+        props = RnaFeatures._validated_props(props, context="DCC props")
         seqs = [RnaFeatures._clean_and_check(x) for x in seqs]
         if not seqs:
             raise ValueError("seqs is empty.")
-        if not props:
-            raise ValueError("props cannot be empty for DCC.")
         
         M = len(next(iter(props.values())))
         cols = [
@@ -313,14 +297,7 @@ class RnaFeatures(FeatureModule):
         require_return_format(return_format)
         require_seqs(seqs)
         require_L(L)
-        if not props:
-            raise ValueError("props cannot be empty for DACC.")
-        lens = {len(v) for v in props.values()}
-        if len(lens) != 1:
-            raise ValueError("all property vectors in props must have the same length.")
-        bad = [k for k in props.keys() if len(k) != 2 or any(ch not in "ACGU" for ch in k)]
-        if bad:
-            raise ValueError(f"props has invalid dinucleotide keys: {bad[:5]}...")
+        props = RnaFeatures._validated_props(props, context="DACC props")
         seqs = [RnaFeatures._clean_and_check(x) for x in seqs]
         if not seqs:
             raise ValueError("seqs is empty.")        
