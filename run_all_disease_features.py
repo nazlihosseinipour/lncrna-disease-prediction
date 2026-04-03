@@ -2,7 +2,7 @@
 Run Disease feature methods (13: Wang term sim, 14: disease BMA, 15: LFS) over your data.
 
 Inputs:
-- edges: CSV with columns parent,child (e.g., Data/output_data/do_edges.csv)
+- edges: CSV with columns child,parent (e.g., Data/output_data/do_edges.csv)
 - disease_terms: CSV with disease,term mapping (Data/output_data/disease_terms_mapping.csv)
 - Y: Disease matrix CSV (rows=lncRNAs, cols=diseases; e.g., Data/output_data/website_disease_matrix.csv)
 
@@ -25,17 +25,17 @@ def load_disease_to_terms(path: Path, diseases_required: list[str]) -> dict[str,
         raise ValueError(f"{path} must have columns 'disease' and 'term'")
     df = df.dropna(subset=["disease"])
     df["term"] = df["term"].fillna("")
-    mapping = {d: [t for t in g["term"].astype(str).tolist() if t.strip()] for d, g in df.groupby("disease")}
-    # ensure every disease we need has at least one term
+    mapping = {d: [t.strip() for t in g["term"].astype(str).tolist() if t.strip()] for d, g in df.groupby("disease")}
+    # ensure every disease we need is present, but do not invent ontology terms from disease labels
     for d in diseases_required:
-        if d not in mapping or not mapping[d]:
-            mapping[d] = [d]
+        if d not in mapping:
+            mapping[d] = []
     return mapping
 
 
 def main():
     p = argparse.ArgumentParser(description="Run disease feature methods 13, 14, and 15.")
-    p.add_argument("--edges", required=True, help="CSV with columns parent,child (ontology DAG)")
+    p.add_argument("--edges", required=True, help="CSV with columns child,parent (ontology DAG)")
     p.add_argument("--disease_terms", required=True, help="CSV with disease,term mapping")
     p.add_argument("--Y", required=True, help="Disease matrix CSV (rows=lncRNAs, cols=diseases)")
     p.add_argument("--outdir", required=True, help="Base output directory (e.g. final-output)")
@@ -68,33 +68,38 @@ def main():
     # Instantiate module with edges
     df_mod = DiseaseFeatures(edges_child_parent=edges, edge_weight=args.edge_weight)
 
-    # 14: disease x disease similarity (BMA) with a fast fallback if very large
+    mapped_count = sum(1 for d in diseases if disease_to_terms.get(d))
+    unmapped_count = len(diseases) - mapped_count
     print(f"[info] diseases: {len(diseases)}, lncRNAs (rows in Y): {len(Y)}")
-    if len(diseases) > 300:
-        import numpy as np
-        sim = pd.DataFrame(np.eye(len(diseases)), index=diseases, columns=diseases)
-        print(f"[info] disease count {len(diseases)} > 300, using identity sim to keep runtime reasonable")
-    else:
-        sim = df_mod.disease_similarity_bma(disease_to_terms=disease_to_terms, diseases_order=diseases)
+    print(f"[info] mapped diseases with DO terms: {mapped_count}/{len(diseases)} | unmapped={unmapped_count}")
+    if unmapped_count:
+        print("[warn] Unmapped diseases receive empty term sets; their ontology-based off-diagonal similarity will be 0.")
+
+    # 14: disease x disease similarity (BMA) using actual Wang term similarity.
+    # Unmapped diseases get empty term sets, which yields 0 off-diagonal similarity instead of a bogus fallback.
+    print("[info] computing disease_similarity_bma exactly (no identity fallback)...")
+    sim = df_mod.disease_similarity_bma(disease_to_terms=disease_to_terms, diseases_order=diseases)
     sim_path = out_base / "disease_similarity_bma.csv"
     sim.to_csv(sim_path)
     print(f"[saved] {sim_path}")
 
-    # 13: term similarity (Wang) using first term per disease.
-    # Reuse the same BMA disease order; to keep runtime manageable, fall back to BMA matrix if terms are identical.
-    first_terms = {d: (terms[0] if terms else d) for d, terms in disease_to_terms.items()}
-    if all(first_terms[d] == d for d in diseases):
-        sim13_df = sim.copy()
-    else:
-        sim13_rows = []
-        for d1 in diseases:
-            row = []
-            t1 = first_terms[d1]
-            for d2 in diseases:
-                t2 = first_terms[d2]
+    # 13: representative-term Wang matrix.
+    # Use the first mapped ontology term when available; do not substitute raw disease labels as fake terms.
+    first_terms = {d: (terms[0] if terms else "") for d, terms in disease_to_terms.items()}
+    sim13_rows = []
+    for d1 in diseases:
+        row = []
+        t1 = first_terms[d1]
+        for d2 in diseases:
+            t2 = first_terms[d2]
+            if d1 == d2:
+                row.append(1.0)
+            elif not t1 or not t2:
+                row.append(0.0)
+            else:
                 row.append(df_mod.wang_term_similarity(t1, t2))
-            sim13_rows.append(row)
-        sim13_df = pd.DataFrame(sim13_rows, index=diseases, columns=diseases)
+        sim13_rows.append(row)
+    sim13_df = pd.DataFrame(sim13_rows, index=diseases, columns=diseases)
     sim13_path = out_base / "term_similarity_wang.csv"
     sim13_df.to_csv(sim13_path)
     print(f"[saved] {sim13_path}")

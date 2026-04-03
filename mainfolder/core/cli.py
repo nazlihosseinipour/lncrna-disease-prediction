@@ -215,7 +215,8 @@ class CLI:
                 dtt = pd.read_csv(args.disease_terms)
                 dtt.columns = [c.lower() for c in dtt.columns]
                 disease_to_terms: Dict[str, list] = {
-                    d: list(g["term"].astype(str)) for d, g in dtt.groupby("disease")
+                    d: [t.strip() for t in g["term"].astype(str).tolist() if t.strip()]
+                    for d, g in dtt.groupby("disease")
                 }
                 obj = FeatureExtractor.run(
                     "disease",

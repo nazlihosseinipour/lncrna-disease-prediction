@@ -31,6 +31,8 @@ INVALID_SEQUENCE_MARKERS = (
 )
 EMPTY_SEQUENCE_MARKERS = {"", "nan", "none", "null"}
 CAUTIOUS_PREFIXES = ("AC", "AL", "AJ", "AF", "AP")
+SYMBOL_WRAPPER_PREFIX_RE = re.compile(r"^(?:LNCRNA[-_]?|LNC[-_])", re.I)
+LICN_PREFIX_RE = re.compile(r"^LICN(?=\d+)", re.I)
 SAFE_VERSIONED_ID_RE = re.compile(
     r"^((?:ENS[A-Z0-9]*\d+)|(?:(?:NM|NR|XM|XR|NC|NG|NT|NW|NZ)_\d+))\.(\d+)$",
     re.I,
@@ -42,6 +44,17 @@ CAUTIOUS_SYMBOL_VERSION_RE = re.compile(
 SYMBOL_TRANSCRIPT_SUFFIX_RE = re.compile(r"^(.+)-(\d{3,})$")
 SYMBOL_COLON_SUFFIX_RE = re.compile(r"^(.+):(\d+)$")
 SYMBOL_DOT_V_SUFFIX_RE = re.compile(r"^(.+)\.v(\d+)$", re.I)
+LINC_ID_RE = re.compile(r"^LINC(\d+)$", re.I)
+STANDARD_ALIAS_PATTERNS = (
+    re.compile(r"\bENS(?:G|T|RNOT)\d+(?:\.\d+)?\b", re.I),
+    re.compile(r"\bLINC\d+\b", re.I),
+    re.compile(r"\b(?:AC|AL|AJ|AF|AP)\d+\.\d+(?:-\d+)?\b", re.I),
+    re.compile(r"\bRP\d+[A-Za-z0-9.-]*\b", re.I),
+    re.compile(r"\b(?:CTA|CTC|KB)-?[A-Za-z0-9.-]+(?:-[A-Za-z0-9.]+)?\b", re.I),
+    re.compile(r"\bLOC\d+\b", re.I),
+    re.compile(r"\b(?:NONHSAT|NONR)\d+(?:\.\d+)?\b", re.I),
+    re.compile(r"\b[A-Z0-9]+-AS\d+\b", re.I),
+)
 RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
 REQUEST_RETRIES = 2
 REQUEST_RETRY_SLEEP = 0.2
@@ -165,6 +178,87 @@ def symbol_fallback_variants(raw_id: str) -> list[str]:
             if candidate and candidate != rid and candidate not in variants:
                 variants.append(candidate)
     return variants
+
+
+def _wrapper_alias_variants(raw_id: str) -> list[str]:
+    rid = str(raw_id or "").strip()
+    variants: list[str] = []
+    stripped = SYMBOL_WRAPPER_PREFIX_RE.sub("", rid).strip(" _-")
+    if stripped and stripped != rid:
+        variants.append(stripped)
+    if LICN_PREFIX_RE.match(rid):
+        variants.append("LINC" + rid[4:])
+    return _dedupe_nonempty(variants)
+
+
+def _extract_standard_aliases(text: str) -> list[str]:
+    values: list[str] = []
+    blob = str(text or "")
+    for pattern in STANDARD_ALIAS_PATTERNS:
+        values.extend(match.group(0).strip() for match in pattern.finditer(blob))
+    return _dedupe_nonempty(values)
+
+
+def _linc_alias_related(raw_id: str, candidate: str) -> bool:
+    m1 = LINC_ID_RE.match(str(raw_id or "").strip())
+    m2 = LINC_ID_RE.match(str(candidate or "").strip())
+    if not m1 or not m2:
+        return False
+    d1 = m1.group(1)
+    d2 = m2.group(1)
+    return d1 == d2 or d1.endswith(d2) or d2.endswith(d1)
+
+
+def _raw_alias_names(raw_id: str) -> list[str]:
+    rid = str(raw_id or "").strip()
+    return _dedupe_nonempty([rid, *_wrapper_alias_variants(rid)])
+
+
+def extract_alias_candidates(raw_id: str, texts: tuple[str, ...] | list[str] | None = None) -> list[str]:
+    rid = str(raw_id or "").strip()
+    if not rid:
+        return []
+
+    candidates: list[str] = []
+    base_names = _raw_alias_names(rid)
+    candidates.extend(name for name in base_names if name != rid)
+
+    text_blob = " ".join(str(t or "").strip() for t in (texts or ()) if str(t or "").strip())
+    if not text_blob:
+        return _dedupe_nonempty(candidates)
+
+    explicit_hits: list[str] = []
+    for name in base_names:
+        escaped = re.escape(name)
+        before_alias = re.search(rf"([A-Za-z0-9_.-]+)\s*,\s*which we refer to as\s+{escaped}\b", text_blob, re.I)
+        if before_alias:
+            explicit_hits.extend(_extract_standard_aliases(before_alias.group(1)))
+        after_alias = re.search(rf"\b{escaped}\b\s*\(([^)]{{1,120}})\)", text_blob, re.I)
+        if after_alias:
+            explicit_hits.extend(_extract_standard_aliases(after_alias.group(1)))
+        termed_alias = re.search(
+            rf"\(([^)]{{1,120}})\)\s*,?\s*(?:which we refer to as|termed|called)\s+{escaped}\b",
+            text_blob,
+            re.I,
+        )
+        if termed_alias:
+            explicit_hits.extend(_extract_standard_aliases(termed_alias.group(1)))
+
+    candidates.extend(explicit_hits)
+
+    generic_hits = [hit for hit in _extract_standard_aliases(text_blob) if hit.upper() != rid.upper()]
+    if generic_hits and len(generic_hits) <= 2:
+        candidates.extend(generic_hits)
+    else:
+        for hit in generic_hits:
+            if hit in explicit_hits:
+                continue
+            if any(hit.upper() == name.upper() for name in base_names):
+                candidates.append(hit)
+            elif _linc_alias_related(rid, hit):
+                candidates.append(hit)
+
+    return [cand for cand in _dedupe_nonempty(candidates) if cand.upper() != rid.upper()]
 
 
 def detect_id_route(raw_id: str) -> IdentifierRoute:
@@ -622,7 +716,7 @@ def resolve_symbol(
     return _result(sym, "symbol", status="unresolved", detail=detail)
 
 
-def fetch_sequence_by_id(session, raw_id: str, *, timeout: int = 10) -> SequenceFetchResult:
+def _fetch_sequence_by_id_core(session, raw_id: str, *, timeout: int = 10) -> SequenceFetchResult:
     route = detect_id_route(raw_id)
     rid = route.normalized_id
     if route.namespace == "empty":
@@ -735,6 +829,78 @@ def fetch_sequence_by_id(session, raw_id: str, *, timeout: int = 10) -> Sequence
         variant_result = _retry_symbol_variants(session, route, result, timeout=timeout, seen={rid})
         return variant_result if variant_result is not None else result
     return _fetch_symbol_like_sequence(session, route, timeout=timeout, seen={rid})
+
+
+def _resolve_alias_candidates(
+    session,
+    query_id: str,
+    primary_result: SequenceFetchResult,
+    *,
+    alias_candidates: list[str],
+    timeout: int,
+) -> SequenceFetchResult:
+    candidates = [cand for cand in _dedupe_nonempty(alias_candidates) if cand.upper() != query_id.upper()]
+    if not candidates:
+        return primary_result
+
+    attempt_notes: list[str] = []
+    for idx, alias in enumerate(candidates):
+        alias_result = _fetch_sequence_by_id_core(session, alias, timeout=timeout)
+        if alias_result.sequence:
+            alternatives = tuple(c for c in candidates if c != alias)
+            status = "alias_first_candidate_resolved" if len(candidates) > 1 else "alias_candidate_resolved"
+            detail = f"alias_candidate:{query_id}->{alias}; {alias_result.detail}"
+            if idx:
+                detail = f"candidate_index:{idx}; {detail}"
+            if alternatives:
+                detail = f"{detail}; alternatives:{'|'.join(alternatives)}"
+            return _result(
+                query_id,
+                primary_result.id_type,
+                sequence=alias_result.sequence,
+                status=status,
+                detail=detail,
+                resolved_id=alias_result.resolved_id or alias,
+                alternative_ids=alternatives or alias_result.alternative_ids,
+                source="alias_candidates",
+            )
+        attempt_notes.append(f"{alias}:{alias_result.detail}")
+
+    detail = f"{primary_result.detail}; alias_candidates:{'|'.join(candidates)}"
+    if attempt_notes:
+        detail = f"{detail}; {'; '.join(attempt_notes)}"
+    return _result(
+        query_id,
+        primary_result.id_type,
+        status="unresolved",
+        detail=detail,
+        resolved_id=primary_result.resolved_id,
+        alternative_ids=primary_result.alternative_ids,
+        source=primary_result.source,
+    )
+
+
+def fetch_sequence_by_id(
+    session,
+    raw_id: str,
+    *,
+    timeout: int = 10,
+    alias_candidates: tuple[str, ...] | list[str] | None = None,
+) -> SequenceFetchResult:
+    rid = str(raw_id or "").strip()
+    primary_result = _fetch_sequence_by_id_core(session, rid, timeout=timeout)
+    if primary_result.sequence:
+        return primary_result
+    candidates = extract_alias_candidates(rid, ()) if alias_candidates is None else list(alias_candidates)
+    if not candidates:
+        return primary_result
+    return _resolve_alias_candidates(
+        session,
+        rid,
+        primary_result,
+        alias_candidates=candidates,
+        timeout=timeout,
+    )
 
 
 def _fetch_symbol_like_sequence(session, route: IdentifierRoute, *, timeout: int, seen: set[str]) -> SequenceFetchResult:

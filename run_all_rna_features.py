@@ -4,6 +4,7 @@ Run every RNA feature method over one or more sequence CSVs.
 Notes:
 - Methods 3–6 need dinucleotide properties; we require --props_csv so nothing is skipped.
 - Accepts multiple inputs; if a file has columns ID/seqs, it is normalized to id/seq.
+- Feature-level normalization can be disabled with --no_normalize.
 
 Usage example:
   python run_all_rna_features.py \
@@ -74,11 +75,17 @@ def main():
     p.add_argument("--L", type=int, default=3, help="lag for DAC/DCC/DACC (methods 4,5,6)")
     p.add_argument("--k_gap", type=int, default=1, help="gap for monoMonoKGap/monoDiKGap (methods 11,12)")
     p.add_argument(
+        "--no_normalize",
+        action="store_true",
+        help="Disable feature-value normalization for methods that support it; sequence cleaning/validation still runs.",
+    )
+    p.add_argument(
         "--props_csv",
         required=True,
         help="CSV with dinucleotide properties (dinuc + feature columns) so methods 3–6 can run",
     )
     args = p.parse_args()
+    normalize_features = not args.no_normalize
 
     # place results under <outdir>/<version_name>/rna/
     base_out = Path(args.outdir) / args.version_name / "rna"
@@ -119,8 +126,11 @@ def main():
             kwargs.update({"return_format": "dataframe", "sample_ids": ids2})
             # Only pass normalize to methods that accept it
             if mid in (1, 2, 7, 8, 9, 10, 11, 12):
-                kwargs["normalize"] = True
-            print(f"[run] {args.version_name}/{stem} -> method {mid} ({name})")
+                kwargs["normalize"] = normalize_features
+            print(
+                f"[run] {args.version_name}/{stem} -> method {mid} ({name}) "
+                f"| normalize={normalize_features if mid in (1, 2, 7, 8, 9, 10, 11, 12) else 'n/a'}"
+            )
             cols, df = FeatureExtractor.run("rna", mid, seqs2, **kwargs)
             out_path = base_out / f"{stem}_{name}.csv"
             if isinstance(df, pd.DataFrame):

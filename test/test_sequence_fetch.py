@@ -19,6 +19,7 @@ from mainfolder.utils.sequence_fetch import (
     NCBI_ESEARCH,
     detect_id_kind,
     detect_id_route,
+    extract_alias_candidates,
     fetch_sequence_by_id,
     normalize_sequence_value,
 )
@@ -184,6 +185,23 @@ def test_normalize_sequence_value_rejects_cached_error_payloads():
     assert normalize_sequence_value(">id\nA U G C") == "AUGC"
 
 
+def test_extract_alias_candidates_handles_wrappers_and_description_aliases():
+    assert extract_alias_candidates("lnc-ADD3-AS1", []) == ["ADD3-AS1"]
+    assert extract_alias_candidates("LICN00520", []) == ["LINC00520"]
+    assert extract_alias_candidates(
+        "HMGA1-lnc",
+        ["We identified the lncRNA RP11.513I15.6, which we refer to as HMGA1-lnc."],
+    ) == ["RP11.513I15.6"]
+    assert extract_alias_candidates(
+        "LncKLHDC7B",
+        ["We discovered that LncKLHDC7B (ENSG00000226738) acts as a transcriptional modulator."],
+    ) == ["ENSG00000226738"]
+    assert extract_alias_candidates(
+        "LINC0638",
+        ["LINC01638 lncRNA was significantly upregulated in melanoma."],
+    ) == ["LINC01638"]
+
+
 def test_fetch_sequence_by_id_rejects_ensembl_error_payload():
     ensembl_id = "ENSG00000251562"
     session = FakeSession(
@@ -240,6 +258,31 @@ def test_fetch_sequence_by_id_treats_ac_style_ids_as_symbol_like():
     assert result.status == "symbol_resolved"
     assert result.sequence == "AUGC"
     assert result.resolved_id == resolved_id
+
+
+def test_fetch_sequence_by_id_uses_alias_candidates_after_primary_failure():
+    symbol = "HMGA1-lnc"
+    alias = "RP11.513I15.6"
+    resolved_id = "ENSG00000251562"
+    responses = {
+        ENSEMBL_LOOKUP.format(symbol=symbol): FakeResponse(status_code=404, json_data={}),
+        ENSEMBL_XREF.format(symbol=symbol): FakeResponse(json_data=[]),
+        ENSEMBL_XREF_NAME.format(symbol=symbol): FakeResponse(json_data=[]),
+        ENSEMBL_LOOKUP.format(symbol=alias): FakeResponse(json_data={"id": resolved_id}),
+        ENSEMBL_SEQ.format(ensembl_id=resolved_id): FakeResponse(text="AUGC"),
+    }
+    for url in ncbi_symbol_search_urls(symbol):
+        responses[url] = FakeResponse(json_data={"esearchresult": {"idlist": []}})
+    session = FakeSession(responses)
+    result = fetch_sequence_by_id(
+        session,
+        symbol,
+        alias_candidates=[alias],
+    )
+    assert result.status == "alias_candidate_resolved"
+    assert result.sequence == "AUGC"
+    assert result.resolved_id == resolved_id
+    assert result.detail == f"alias_candidate:{symbol}->{alias}; symbol_lookup:{alias}->{resolved_id}"
 
 
 def test_fetch_sequence_by_id_retries_transient_symbol_lookup_errors():
