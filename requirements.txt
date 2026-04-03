@@ -79,6 +79,7 @@ pluggy==1.6.0
 prometheus_client==0.21.1
 prompt_toolkit==3.0.50
 pronto==2.7.2
+protobuf==7.34.1
 psutil==7.0.0
 ptyprocess==0.7.0
 pure_eval==0.2.3
@@ -117,7 +118,7 @@ torch==2.9.0
 tornado==6.4.2
 tqdm==4.67.1
 traitlets==5.14.3
-transformers==5.4.0
+transformers==5.5.0
 typer==0.24.1
 types-python-dateutil==2.9.0.20241206
 typing_extensions==4.13.1

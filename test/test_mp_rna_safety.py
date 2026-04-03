@@ -119,6 +119,25 @@ def test_backbone_registry_uses_trust_remote_code(monkeypatch):
     assert calls["model"]["trust_remote_code"] is True
 
 
+def test_transformers_compat_shim_installs_missing_prune_helper(monkeypatch):
+    import transformers.pytorch_utils as pytorch_utils
+
+    had_attr = hasattr(pytorch_utils, "find_pruneable_heads_and_indices")
+    original = getattr(pytorch_utils, "find_pruneable_heads_and_indices", None)
+    if had_attr:
+        monkeypatch.delattr(pytorch_utils, "find_pruneable_heads_and_indices", raising=False)
+
+    backbone_registry_module._install_transformers_compat_shims()
+
+    assert hasattr(pytorch_utils, "find_pruneable_heads_and_indices")
+    heads, index = pytorch_utils.find_pruneable_heads_and_indices({0, 2}, 4, 8, set())
+    assert heads == {0, 2}
+    assert index.numel() == 16
+
+    if had_attr and original is not None:
+        monkeypatch.setattr(pytorch_utils, "find_pruneable_heads_and_indices", original, raising=False)
+
+
 def test_aido_sequences_are_clipped_before_tokenization(monkeypatch, capsys):
     tokenizer = DummyTokenizer()
     model = DummyModel()
