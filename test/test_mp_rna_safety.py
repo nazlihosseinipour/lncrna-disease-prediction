@@ -57,6 +57,10 @@ class DummyMPRNAEncoder(AbstractRNAEncoder):
     model_id = "yangheng/MP-RNA"
 
 
+class DummyAIDOEncoder(AbstractRNAEncoder):
+    model_id = "genbio-ai/AIDO.RNA-1.6B"
+
+
 def test_mp_rna_sequences_are_clipped_before_tokenization(monkeypatch, capsys):
     tokenizer = DummyTokenizer()
     model = DummyModel()
@@ -113,3 +117,38 @@ def test_backbone_registry_uses_trust_remote_code(monkeypatch):
     assert bb.tokenizer_kwargs["max_length"] == 512
     assert calls["tokenizer"]["trust_remote_code"] is True
     assert calls["model"]["trust_remote_code"] is True
+
+
+def test_aido_sequences_are_clipped_before_tokenization(monkeypatch, capsys):
+    tokenizer = DummyTokenizer()
+    model = DummyModel()
+    backbone = HFBackbone(
+        model_id="genbio-ai/AIDO.RNA-1.6B",
+        tokenizer=tokenizer,
+        model=model,
+        hidden_size=4,
+        tokenizer_kwargs={
+            "return_tensors": "pt",
+            "truncation": True,
+            "max_length": 1024,
+            "padding": "max_length",
+        },
+        max_input_bases=1024,
+    )
+    monkeypatch.setattr(BackboneRegistry, "get", classmethod(lambda cls, model_id: backbone))
+
+    encoder = DummyAIDOEncoder()
+    labels, rows = encoder.sequence_embeddings(["A" * 1800], batch_size=1)
+
+    assert len(labels) == 4
+    assert len(rows) == 1
+    batch, kwargs = tokenizer.calls[0]
+    assert len(batch[0]) == 1024
+    assert kwargs["truncation"] is True
+    assert kwargs["max_length"] == 1024
+    assert kwargs["padding"] == "max_length"
+    assert kwargs["return_tensors"] == "pt"
+    captured = capsys.readouterr()
+    assert "original_len=1800" in captured.out
+    assert "truncated_len=1024" in captured.out
+    assert "skipped=False" in captured.out

@@ -71,7 +71,9 @@ def main():
     if args.seqs_csv:
         seqs_list = [Path(p) for p in args.seqs_csv]
     else:
-        seqs_list = [find_default_sequences_csv()]
+        selected = find_default_sequences_csv()
+        print(f"[info] no --seqs_csv provided, using {selected}")
+        seqs_list = [selected]
 
     out_base = Path(args.outdir) / args.version_name / "nn"
     out_base.mkdir(parents=True, exist_ok=True)
@@ -83,7 +85,17 @@ def main():
             raise FileNotFoundError(f"File not found: {seqs_path}")
         ids, seqs = normalize_id_seq(seqs_path)
         ids2, seqs2 = preprocess_sequences(ids, seqs, valid_alphabet=set(ALPHABET), strict=False)
+        if not seqs2:
+            raise ValueError(
+                f"{seqs_path} produced 0 valid sequences after preprocessing. "
+                "Check seq/seqs content and allowed RNA alphabet."
+            )
         stem = seqs_path.stem
+        print(
+            f"[info] {seqs_path}: kept {len(seqs2)}/{len(seqs)} sequences after preprocessing"
+        )
+        failures = []
+        success_count = 0
 
         for mid in method_ids:
             name = NNFeatures.METHOD_MAP[mid]
@@ -98,13 +110,38 @@ def main():
             if mid in (130, 131):
                 kwargs.update({"window": args.window, "stride": args.stride, "agg": args.agg})
 
-            cols, df = FeatureExtractor.run("nn", mid, seqs2, **kwargs)
+            try:
+                cols, df = FeatureExtractor.run("nn", mid, seqs2, **kwargs)
+            except Exception as exc:
+                failures.append(
+                    {
+                        "source_csv": str(seqs_path),
+                        "method_id": mid,
+                        "method_name": name,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                )
+                print(f"[warn] failed method {mid} ({name}): {type(exc).__name__}: {exc}")
+                continue
+
             out_path = out_base / f"{stem}_{name}.csv"
             if isinstance(df, pd.DataFrame):
                 df.to_csv(out_path, index=False)
             else:
                 pd.DataFrame(df, columns=cols).to_csv(out_path, index=False)
+            success_count += 1
             print(f"[saved] {out_path}")
+
+        if failures:
+            fail_path = out_base / f"{stem}_nn_failures.csv"
+            pd.DataFrame(failures).to_csv(fail_path, index=False)
+            print(f"[saved] {fail_path}")
+        if success_count == 0:
+            raise RuntimeError(
+                f"All NN methods failed for {seqs_path}. "
+                f"See {out_base / f'{stem}_nn_failures.csv'} for details."
+            )
 
 
 if __name__ == "__main__":

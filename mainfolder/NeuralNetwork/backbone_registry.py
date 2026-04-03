@@ -14,6 +14,15 @@ class BackboneRegistry:
             },
             "max_input_bases": 512,
         },
+        "genbio-ai/AIDO.RNA-1.6B": {
+            "tokenizer_kwargs": {
+                "return_tensors": "pt",
+                "truncation": True,
+                "max_length": 1024,
+                "padding": "max_length",
+            },
+            "max_input_bases": 1024,
+        },
     }
 
     @classmethod
