@@ -116,6 +116,7 @@ def test_backbone_registry_uses_trust_remote_code(monkeypatch):
     assert bb.max_input_bases == 512
     assert bb.tokenizer_kwargs["max_length"] == 512
     assert calls["tokenizer"]["trust_remote_code"] is True
+    assert calls["tokenizer"]["use_fast"] is False
     assert calls["model"]["trust_remote_code"] is True
 
 

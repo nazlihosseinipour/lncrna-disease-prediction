@@ -72,7 +72,11 @@ class BackboneRegistry:
             {"tokenizer_kwargs": {"return_tensors": "pt", "padding": True, "truncation": True}, "max_input_bases": None},
         )
 
-        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_id,
+            trust_remote_code=True,
+            use_fast=False,
+        )
         model = AutoModel.from_pretrained(model_id, torch_dtype=dtype, trust_remote_code=True).to(device).eval()
 
         hidden_size = getattr(model.config, "hidden_size", None)
