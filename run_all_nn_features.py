@@ -66,6 +66,12 @@ def main():
     p.add_argument("--window", type=int, default=1024, help="Window for chunked methods")
     p.add_argument("--stride", type=int, default=512, help="Stride for chunked methods")
     p.add_argument("--agg", choices=["mean", "max"], default="mean", help="Aggregation for chunked methods")
+    p.add_argument(
+        "--methods",
+        nargs="+",
+        type=int,
+        help="Optional subset of NN method IDs to run (e.g. 100 101 130 for MP-RNA only)",
+    )
     args = p.parse_args()
 
     if args.seqs_csv:
@@ -79,6 +85,13 @@ def main():
     out_base.mkdir(parents=True, exist_ok=True)
 
     method_ids = sorted(NNFeatures.METHOD_MAP.keys())
+    if args.methods:
+        unknown = sorted(set(args.methods) - set(method_ids))
+        if unknown:
+            raise ValueError(
+                f"Unknown NN method IDs requested: {unknown}. Available: {method_ids}"
+            )
+        method_ids = [mid for mid in method_ids if mid in set(args.methods)]
 
     for seqs_path in seqs_list:
         if not seqs_path.exists():

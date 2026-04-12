@@ -1,4 +1,5 @@
 import sys
+import types
 from pathlib import Path
 
 import torch
@@ -10,6 +11,7 @@ if str(ROOT) not in sys.path:
 
 
 from mainfolder.NeuralNetwork.abstract_rna_encoder import AbstractRNAEncoder
+from mainfolder.NeuralNetwork.aido_rna_encoder import AIDORNAEncoder
 from mainfolder.NeuralNetwork.backbone import HFBackbone
 from mainfolder.NeuralNetwork.backbone_registry import BackboneRegistry
 import mainfolder.NeuralNetwork.backbone_registry as backbone_registry_module
@@ -55,10 +57,6 @@ class DummyModel:
 
 class DummyMPRNAEncoder(AbstractRNAEncoder):
     model_id = "yangheng/MP-RNA"
-
-
-class DummyAIDOEncoder(AbstractRNAEncoder):
-    model_id = "genbio-ai/AIDO.RNA-1.6B"
 
 
 def test_mp_rna_sequences_are_clipped_before_tokenization(monkeypatch, capsys):
@@ -139,36 +137,59 @@ def test_transformers_compat_shim_installs_missing_prune_helper(monkeypatch):
         monkeypatch.setattr(pytorch_utils, "find_pruneable_heads_and_indices", original, raising=False)
 
 
-def test_aido_sequences_are_clipped_before_tokenization(monkeypatch, capsys):
-    tokenizer = DummyTokenizer()
-    model = DummyModel()
-    backbone = HFBackbone(
-        model_id="genbio-ai/AIDO.RNA-1.6B",
-        tokenizer=tokenizer,
-        model=model,
-        hidden_size=4,
-        tokenizer_kwargs={
-            "return_tensors": "pt",
-            "truncation": True,
-            "max_length": 1024,
-            "padding": "max_length",
-        },
-        max_input_bases=1024,
-    )
-    monkeypatch.setattr(BackboneRegistry, "get", classmethod(lambda cls, model_id: backbone))
+def install_fake_modelgenerator(monkeypatch):
+    calls = {"config": None, "batches": []}
 
-    encoder = DummyAIDOEncoder()
+    class FakeEmbedModel:
+        def eval(self):
+            return self
+
+        def transform(self, batch):
+            calls["batches"].append(list(batch["sequences"]))
+            return batch
+
+        def __call__(self, batch):
+            n = len(batch["sequences"])
+            return torch.ones((n, 4), dtype=torch.float32)
+
+    class FakeEmbed:
+        @classmethod
+        def from_config(cls, config):
+            calls["config"] = dict(config)
+            return FakeEmbedModel()
+
+    modelgenerator_mod = types.ModuleType("modelgenerator")
+    tasks_mod = types.ModuleType("modelgenerator.tasks")
+    tasks_mod.Embed = FakeEmbed
+    modelgenerator_mod.tasks = tasks_mod
+    monkeypatch.setitem(sys.modules, "modelgenerator", modelgenerator_mod)
+    monkeypatch.setitem(sys.modules, "modelgenerator.tasks", tasks_mod)
+    return calls
+
+
+def test_aido_sequences_are_clipped_before_embedding(monkeypatch, capsys):
+    calls = install_fake_modelgenerator(monkeypatch)
+
+    encoder = AIDORNAEncoder()
     labels, rows = encoder.sequence_embeddings(["A" * 1800], batch_size=1)
 
+    assert calls["config"] == {"model.backbone": "aido_rna_1b600m"}
     assert len(labels) == 4
     assert len(rows) == 1
-    batch, kwargs = tokenizer.calls[0]
-    assert len(batch[0]) == 1024
-    assert kwargs["truncation"] is True
-    assert kwargs["max_length"] == 1024
-    assert kwargs["padding"] == "max_length"
-    assert kwargs["return_tensors"] == "pt"
+    assert len(calls["batches"][0][0]) == 1024
     captured = capsys.readouterr()
     assert "original_len=1800" in captured.out
     assert "truncated_len=1024" in captured.out
     assert "skipped=False" in captured.out
+
+
+def test_aido_token_embeddings_not_supported_yet(monkeypatch):
+    install_fake_modelgenerator(monkeypatch)
+    encoder = AIDORNAEncoder()
+
+    try:
+        encoder.token_embeddings(["AUGC"])
+    except NotImplementedError as exc:
+        assert "not exposed" in str(exc)
+    else:
+        raise AssertionError("expected NotImplementedError")
