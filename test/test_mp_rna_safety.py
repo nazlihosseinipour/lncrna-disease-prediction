@@ -97,6 +97,9 @@ def test_mp_rna_sequences_are_clipped_before_tokenization(monkeypatch, capsys):
 def test_backbone_registry_uses_trust_remote_code(monkeypatch):
     calls = {}
 
+    class DummyConfig:
+        hidden_size = 4
+
     def fake_tokenizer_from_pretrained(model_id, **kwargs):
         calls["tokenizer"] = {"model_id": model_id, **kwargs}
         return DummyTokenizer()
@@ -105,16 +108,24 @@ def test_backbone_registry_uses_trust_remote_code(monkeypatch):
         calls["model"] = {"model_id": model_id, **kwargs}
         return DummyModel()
 
+    def fake_config_from_pretrained(model_id, **kwargs):
+        calls["config"] = {"model_id": model_id, **kwargs}
+        return DummyConfig()
+
     monkeypatch.setattr(backbone_registry_module.AutoTokenizer, "from_pretrained", fake_tokenizer_from_pretrained)
     monkeypatch.setattr(backbone_registry_module.AutoModel, "from_pretrained", fake_model_from_pretrained)
+    monkeypatch.setattr(backbone_registry_module.AutoConfig, "from_pretrained", fake_config_from_pretrained)
     BackboneRegistry._cache.clear()
 
     bb = BackboneRegistry.get("yangheng/MP-RNA")
 
     assert bb.max_input_bases == 512
     assert bb.tokenizer_kwargs["max_length"] == 512
+    assert calls["config"]["trust_remote_code"] is True
     assert calls["tokenizer"]["trust_remote_code"] is True
     assert calls["tokenizer"]["use_fast"] is False
+    assert calls["model"]["config"].is_decoder is False
+    assert calls["model"]["dtype"] == torch.float32
     assert calls["model"]["trust_remote_code"] is True
 
 

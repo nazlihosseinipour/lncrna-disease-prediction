@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, AutoConfig
 import torch
 from .backbone import HFBackbone
 
@@ -26,6 +26,23 @@ def _install_transformers_compat_shims() -> None:
             pytorch_utils.find_pruneable_heads_and_indices = _compat_find_pruneable_heads_and_indices
     except Exception:
         pass
+
+
+def _patch_remote_config(config):
+    """
+    Fill newer transformers config attributes that older remote checkpoints may
+    omit, but current modeling code expects to exist.
+    """
+    defaults = {
+        "is_decoder": False,
+        "add_cross_attention": False,
+        "chunk_size_feed_forward": 0,
+        "tie_word_embeddings": True,
+    }
+    for name, value in defaults.items():
+        if not hasattr(config, name):
+            setattr(config, name, value)
+    return config
 
     try:
         import transformers.modeling_utils as modeling_utils
@@ -71,13 +88,21 @@ class BackboneRegistry:
             model_id,
             {"tokenizer_kwargs": {"return_tensors": "pt", "padding": True, "truncation": True}, "max_input_bases": None},
         )
+        config = _patch_remote_config(
+            AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+        )
 
         tokenizer = AutoTokenizer.from_pretrained(
             model_id,
             trust_remote_code=True,
             use_fast=False,
         )
-        model = AutoModel.from_pretrained(model_id, torch_dtype=dtype, trust_remote_code=True).to(device).eval()
+        model = AutoModel.from_pretrained(
+            model_id,
+            config=config,
+            dtype=dtype,
+            trust_remote_code=True,
+        ).to(device).eval()
 
         hidden_size = getattr(model.config, "hidden_size", None)
         if hidden_size is None:
