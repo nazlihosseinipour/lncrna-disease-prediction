@@ -148,6 +148,19 @@ def test_transformers_compat_shim_installs_missing_prune_helper(monkeypatch):
         monkeypatch.setattr(pytorch_utils, "find_pruneable_heads_and_indices", original, raising=False)
 
 
+def test_remote_model_instance_gets_head_mask_shim():
+    model = DummyModel()
+    patched = backbone_registry_module._patch_remote_model_instance(model)
+
+    assert hasattr(patched, "get_head_mask")
+    out = patched.get_head_mask(None, 3)
+    assert out == [None, None, None]
+
+    mask = torch.ones(2)
+    out = patched.get_head_mask(mask, 3)
+    assert out.shape == (3, 1, 2, 1, 1)
+
+
 def install_fake_modelgenerator(monkeypatch):
     calls = {"config": None, "batches": []}
 

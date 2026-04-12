@@ -1,3 +1,5 @@
+import types
+
 from transformers import AutoTokenizer, AutoModel, AutoConfig
 import torch
 from .backbone import HFBackbone
@@ -27,6 +29,14 @@ def _install_transformers_compat_shims() -> None:
     except Exception:
         pass
 
+    try:
+        import transformers.modeling_utils as modeling_utils
+
+        if not hasattr(modeling_utils, "find_pruneable_heads_and_indices"):
+            modeling_utils.find_pruneable_heads_and_indices = _compat_find_pruneable_heads_and_indices
+    except Exception:
+        pass
+
 
 def _patch_remote_config(config):
     """
@@ -44,13 +54,33 @@ def _patch_remote_config(config):
             setattr(config, name, value)
     return config
 
-    try:
-        import transformers.modeling_utils as modeling_utils
 
-        if not hasattr(modeling_utils, "find_pruneable_heads_and_indices"):
-            modeling_utils.find_pruneable_heads_and_indices = _compat_find_pruneable_heads_and_indices
+def _compat_get_head_mask(self, head_mask, num_hidden_layers, is_attention_chunked=False):
+    if head_mask is None:
+        return [None] * num_hidden_layers
+
+    if head_mask.dim() == 1:
+        head_mask = head_mask.unsqueeze(0).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        head_mask = head_mask.expand(num_hidden_layers, -1, -1, -1, -1)
+    elif head_mask.dim() == 2:
+        head_mask = head_mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1)
+    else:
+        raise AssertionError(f"head_mask.dim != 5, got {head_mask.dim()}")
+
+    try:
+        dtype = next(self.parameters()).dtype
     except Exception:
-        pass
+        dtype = torch.float32
+    head_mask = head_mask.to(dtype=dtype)
+    if is_attention_chunked:
+        head_mask = head_mask.unsqueeze(-1)
+    return head_mask
+
+
+def _patch_remote_model_instance(model):
+    if not hasattr(model, "get_head_mask"):
+        model.get_head_mask = types.MethodType(_compat_get_head_mask, model)
+    return model
 
 
 class BackboneRegistry:
@@ -103,6 +133,7 @@ class BackboneRegistry:
             dtype=dtype,
             trust_remote_code=True,
         ).to(device).eval()
+        model = _patch_remote_model_instance(model)
 
         hidden_size = getattr(model.config, "hidden_size", None)
         if hidden_size is None:
