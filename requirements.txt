@@ -67,7 +67,7 @@ nest-asyncio==1.6.0
 networkx==3.5
 notebook==7.3.3
 notebook_shim==0.2.4
-numpy==2.3.1
+numpy==1.26.4
 obonet==1.1.1
 overrides==7.7.0
 packaging==24.2
