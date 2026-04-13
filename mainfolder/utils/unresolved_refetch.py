@@ -8,6 +8,7 @@ import pandas as pd
 import requests
 
 from mainfolder.utils.nonhuman_ids import split_nonhuman_unresolved_df
+from mainfolder.utils.sequence_overrides import load_sequence_overrides, sync_sequence_override_template
 from mainfolder.utils.sequence_fetch import (
     SequenceFetchResult,
     detect_id_kind,
@@ -25,6 +26,7 @@ TEXT_ALIAS_COLUMNS = ["Description", "Clinical Application", "Causal Description
 @dataclass(frozen=True)
 class RefetchPaths:
     raw_website: Path
+    sequence_overrides: Path
     website_sequences: Path
     website_full: Path
     website_oop: Path
@@ -84,6 +86,7 @@ def refetch_unresolved_ids(
     ids: list[str],
     *,
     alias_map: dict[str, list[str]],
+    sequence_overrides,
     timeout: int,
     sleep_sec: float,
     progress_every: int,
@@ -101,6 +104,7 @@ def refetch_unresolved_ids(
             rid,
             timeout=timeout,
             alias_candidates=alias_map.get(rid),
+            overrides=sequence_overrides,
         )
         results.append(result)
         if idx == 1 or idx % progress_every == 0 or idx == total:
@@ -290,6 +294,11 @@ def refetch_human_unresolved_only(
     if max_ids is not None:
         human_ids = human_ids[:max_ids]
 
+    added_override_rows = sync_sequence_override_template(paths.sequence_overrides, human_ids)
+    sequence_overrides = load_sequence_overrides(paths.sequence_overrides)
+    if added_override_rows:
+        print(f"[info] added {added_override_rows} unresolved IDs to override template: {paths.sequence_overrides}")
+
     alias_map = load_alias_map(paths.raw_website, human_ids)
     if alias_map:
         print(f"[info] alias candidates prepared for {len(alias_map)} unresolved IDs")
@@ -297,6 +306,7 @@ def refetch_human_unresolved_only(
     results = refetch_unresolved_ids(
         human_ids,
         alias_map=alias_map,
+        sequence_overrides=sequence_overrides,
         timeout=timeout,
         sleep_sec=sleep_sec,
         progress_every=progress_every,
@@ -329,6 +339,7 @@ def refetch_human_unresolved_only(
         "resolved_now": resolved_now,
         "remaining_human_unresolved": len(unresolved_df),
         "non_human_unresolved": len(nonhuman_df),
+        "sequence_override_rows": len(sequence_overrides),
         "oop_rows": oop_rows,
         "missing_sequences_total": missing_count,
     }

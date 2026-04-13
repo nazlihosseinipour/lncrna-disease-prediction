@@ -5,6 +5,8 @@ import re
 import time
 from urllib.parse import quote
 
+from mainfolder.utils.sequence_overrides import SequenceOverride
+
 
 ENSEMBL_LOOKUP = "https://rest.ensembl.org/lookup/symbol/homo_sapiens/{symbol}"
 ENSEMBL_LOOKUP_ID = "https://rest.ensembl.org/lookup/id/{ensembl_id}?expand=1"
@@ -19,6 +21,14 @@ NCBI_EFETCH = (
 NCBI_ESEARCH = (
     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
     "?db=nuccore&term={term}&retmode=json&retmax={retmax}"
+)
+NCBI_GENE_ESEARCH = (
+    "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+    "?db=gene&term={term}&retmode=json&retmax={retmax}"
+)
+NCBI_GENE_EFETCH = (
+    "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+    "?db=gene&id={gene_id}&retmode=xml"
 )
 VALID_NUCLEOTIDE_CHARS = set("ACGTUNRYSWKMBDHVX")
 INVALID_SEQUENCE_MARKERS = (
@@ -43,8 +53,13 @@ CAUTIOUS_SYMBOL_VERSION_RE = re.compile(
 )
 SYMBOL_TRANSCRIPT_SUFFIX_RE = re.compile(r"^(.+)-(\d{3,})$")
 SYMBOL_COLON_SUFFIX_RE = re.compile(r"^(.+):(\d+)$")
+SYMBOL_SMALL_DASH_SUFFIX_RE = re.compile(r"^(.+)-(\d{1,2})$")
+SYMBOL_SMALL_DASH_COLON_SUFFIX_RE = re.compile(r"^(.+)-(\d{1,2}):(\d+)$")
 SYMBOL_DOT_V_SUFFIX_RE = re.compile(r"^(.+)\.v(\d+)$", re.I)
+SYMBOL_BARE_V_SUFFIX_RE = re.compile(r"^(.+?)v(\d+)$")
+SYMBOL_COMPACT_ANTISENSE_RE = re.compile(r"^([A-Za-z0-9]+)as(\d*)$", re.I)
 LINC_ID_RE = re.compile(r"^LINC(\d+)$", re.I)
+GENERIC_ALIAS_TOKEN_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9.-]{2,30}\b")
 STANDARD_ALIAS_PATTERNS = (
     re.compile(r"\bENS(?:G|T|RNOT)\d+(?:\.\d+)?\b", re.I),
     re.compile(r"\bLINC\d+\b", re.I),
@@ -58,6 +73,15 @@ STANDARD_ALIAS_PATTERNS = (
 RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
 REQUEST_RETRIES = 2
 REQUEST_RETRY_SLEEP = 0.2
+OCR_NEAR_MATCH_SWAPS = {
+    ("I", "1"),
+    ("1", "I"),
+    ("L", "1"),
+    ("1", "L"),
+    ("O", "0"),
+    ("0", "O"),
+}
+REFSEQ_RNA_ACCESSION_RE = re.compile(r"\b(?:NR|NM|XR|XM)_\d+(?:\.\d+)?\b", re.I)
 
 
 @dataclass(frozen=True)
@@ -171,12 +195,31 @@ def strip_cautious_symbol_version_suffix(raw_id: str) -> tuple[str, bool]:
 def symbol_fallback_variants(raw_id: str) -> list[str]:
     rid = str(raw_id or "").strip()
     variants: list[str] = []
-    for pattern in (SYMBOL_COLON_SUFFIX_RE, SYMBOL_TRANSCRIPT_SUFFIX_RE, SYMBOL_DOT_V_SUFFIX_RE):
+    for pattern in (
+        SYMBOL_SMALL_DASH_COLON_SUFFIX_RE,
+        SYMBOL_COLON_SUFFIX_RE,
+        SYMBOL_TRANSCRIPT_SUFFIX_RE,
+        SYMBOL_SMALL_DASH_SUFFIX_RE,
+        SYMBOL_DOT_V_SUFFIX_RE,
+        SYMBOL_BARE_V_SUFFIX_RE,
+    ):
         match = pattern.match(rid)
         if match:
             candidate = str(match.group(1) or "").strip()
             if candidate and candidate != rid and candidate not in variants:
                 variants.append(candidate)
+    antisense_match = SYMBOL_COMPACT_ANTISENSE_RE.match(rid)
+    if antisense_match:
+        base_symbol = str(antisense_match.group(1) or "").strip()
+        antisense_suffix = str(antisense_match.group(2) or "").strip()
+        antisense_candidates = [f"{base_symbol}-AS{antisense_suffix}"] if antisense_suffix else [f"{base_symbol}-AS1", f"{base_symbol}-AS"]
+        for candidate in antisense_candidates:
+            if candidate and candidate != rid and candidate not in variants:
+                variants.append(candidate)
+    for candidate in list(variants):
+        for wrapper_variant in _wrapper_alias_variants(candidate):
+            if wrapper_variant and wrapper_variant != rid and wrapper_variant not in variants:
+                variants.append(wrapper_variant)
     return variants
 
 
@@ -197,6 +240,26 @@ def _extract_standard_aliases(text: str) -> list[str]:
     for pattern in STANDARD_ALIAS_PATTERNS:
         values.extend(match.group(0).strip() for match in pattern.finditer(blob))
     return _dedupe_nonempty(values)
+
+
+def _is_single_ocr_near_match(raw_id: str, candidate: str) -> bool:
+    left = str(raw_id or "").strip().upper()
+    right = str(candidate or "").strip().upper()
+    if not left or not right or len(left) != len(right) or left == right:
+        return False
+    diffs = [(lch, rch) for lch, rch in zip(left, right) if lch != rch]
+    return len(diffs) == 1 and diffs[0] in OCR_NEAR_MATCH_SWAPS
+
+
+def _extract_near_match_aliases(raw_id: str, text: str) -> list[str]:
+    rid = str(raw_id or "").strip()
+    blob = str(text or "")
+    candidates = [
+        token.strip()
+        for token in GENERIC_ALIAS_TOKEN_RE.findall(blob)
+        if _is_single_ocr_near_match(rid, token)
+    ]
+    return _dedupe_nonempty(candidates)
 
 
 def _linc_alias_related(raw_id: str, candidate: str) -> bool:
@@ -258,6 +321,8 @@ def extract_alias_candidates(raw_id: str, texts: tuple[str, ...] | list[str] | N
             elif _linc_alias_related(rid, hit):
                 candidates.append(hit)
 
+    candidates.extend(_extract_near_match_aliases(rid, text_blob))
+
     return [cand for cand in _dedupe_nonempty(candidates) if cand.upper() != rid.upper()]
 
 
@@ -304,6 +369,9 @@ def _symbol_route_variants(route: IdentifierRoute) -> list[str]:
         for candidate in symbol_fallback_variants(route.normalized_id):
             if candidate not in variants:
                 variants.append(candidate)
+    for wrapper_variant in _wrapper_alias_variants(route.normalized_id):
+        if wrapper_variant not in variants:
+            variants.append(wrapper_variant)
     return variants
 
 
@@ -327,6 +395,92 @@ def _result(
         resolved_id=str(resolved_id or "").strip(),
         alternative_ids=tuple(str(x).strip() for x in (alternative_ids or ()) if str(x).strip()),
         source=str(source or "").strip(),
+    )
+
+
+def _try_sequence_override(
+    session,
+    query_id: str,
+    *,
+    overrides: dict[str, SequenceOverride] | None,
+    timeout: int,
+    override_seen: set[str],
+) -> SequenceFetchResult | None:
+    if not overrides:
+        return None
+    qid = str(query_id or "").strip()
+    if not qid or qid in override_seen:
+        return None
+
+    override = overrides.get(qid)
+    if override is None:
+        return None
+
+    id_type = detect_id_kind(qid)
+    source = override.source or "sequence_override"
+    notes = f"; notes:{override.notes}" if override.notes else ""
+
+    if override.sequence:
+        seq = normalize_sequence_value(override.sequence)
+        if seq:
+            return _result(
+                qid,
+                id_type,
+                sequence=seq,
+                status="override_sequence_resolved",
+                detail=f"override_sequence:{qid}{notes}",
+                resolved_id=override.resolved_id or qid,
+                source=source,
+            )
+        return _result(
+            qid,
+            id_type,
+            status="unresolved",
+            detail=f"override_sequence_invalid:{qid}{notes}",
+            resolved_id=override.resolved_id,
+            source=source,
+        )
+
+    target_id = str(override.resolved_id or "").strip()
+    if not target_id:
+        return None
+    if target_id == qid or target_id in override_seen:
+        return _result(
+            qid,
+            id_type,
+            status="unresolved",
+            detail=f"override_cycle:{qid}->{target_id or qid}{notes}",
+            resolved_id=target_id,
+            source=source,
+        )
+
+    nested = fetch_sequence_by_id(
+        session,
+        target_id,
+        timeout=timeout,
+        alias_candidates=None,
+        overrides=overrides,
+        _override_seen=override_seen | {qid},
+    )
+    if nested.sequence:
+        return _result(
+            qid,
+            id_type,
+            sequence=nested.sequence,
+            status="override_resolved_id_fetched",
+            detail=f"override_id:{qid}->{target_id}; {nested.detail}{notes}",
+            resolved_id=nested.resolved_id or target_id,
+            alternative_ids=nested.alternative_ids,
+            source=source,
+        )
+    return _result(
+        qid,
+        id_type,
+        status="unresolved",
+        detail=f"override_id:{qid}->{target_id}; {nested.detail}{notes}",
+        resolved_id=nested.resolved_id or target_id,
+        alternative_ids=nested.alternative_ids,
+        source=source,
     )
 
 
@@ -524,6 +678,130 @@ def _ncbi_symbol_search_terms(route: IdentifierRoute, symbol: str) -> list[tuple
     return deduped
 
 
+def _ncbi_gene_search_terms(route: IdentifierRoute, symbol: str) -> list[tuple[str, str]]:
+    exact = f'"{symbol}"'
+    queries = [
+        ("ncbi_gene_sym", f'{exact}[sym] AND "Homo sapiens"[orgn]'),
+        ("ncbi_gene_all_fields", f'{exact}[All Fields] AND "Homo sapiens"[orgn]'),
+    ]
+    if route.family == "loc_symbol":
+        queries.insert(1, ("ncbi_gene_pref_sym", f'{exact}[Preferred Symbol] AND "Homo sapiens"[orgn]'))
+
+    deduped: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for label, query in queries:
+        if query not in seen:
+            seen.add(query)
+            deduped.append((label, query))
+    return deduped
+
+
+def _extract_refseq_rna_accessions_from_gene_xml(text: str) -> list[str]:
+    xml_text = str(text or "")
+    return _dedupe_nonempty(REFSEQ_RNA_ACCESSION_RE.findall(xml_text))
+
+
+def resolve_symbol_via_ncbi_gene(
+    session,
+    symbol: str,
+    *,
+    timeout: int = 10,
+    route: IdentifierRoute | None = None,
+) -> SequenceFetchResult:
+    sym = str(symbol or "").strip()
+    route = route or detect_id_route(sym)
+    notes: list[str] = []
+    gene_ids: list[str] = []
+    search_label = ""
+
+    for label, query in _ncbi_gene_search_terms(route, sym):
+        response, exc = _request_with_retry(
+            session,
+            NCBI_GENE_ESEARCH.format(term=quote(query, safe=""), retmax=5),
+            timeout=timeout,
+        )
+        if exc is not None:
+            notes.append(f"{label}_err:{exc}")
+            continue
+        if response.status_code != 200:
+            notes.append(f"{label}_status:{response.status_code}")
+            continue
+        try:
+            payload = response.json() or {}
+        except Exception as exc:
+            notes.append(f"{label}_json_err:{exc}")
+            continue
+        candidate_ids = _dedupe_nonempty(payload.get("esearchresult", {}).get("idlist") or [])
+        if candidate_ids:
+            gene_ids = candidate_ids
+            search_label = label
+            break
+        notes.append(f"{label}_empty")
+
+    if not gene_ids:
+        detail = "ncbi_gene_search_empty"
+        if notes:
+            detail = f"{detail}; {'; '.join(notes)}"
+        return _result(sym, "symbol", status="unresolved", detail=detail, source="ncbi_gene")
+
+    accession_candidates: list[str] = []
+    gene_attempts: list[str] = []
+    for gene_id in gene_ids:
+        response, exc = _request_with_retry(
+            session,
+            NCBI_GENE_EFETCH.format(gene_id=quote(gene_id, safe="")),
+            timeout=timeout,
+        )
+        if exc is not None:
+            gene_attempts.append(f"{gene_id}:efetch_err:{exc}")
+            continue
+        if response.status_code != 200:
+            gene_attempts.append(f"{gene_id}:efetch_status:{response.status_code}")
+            continue
+        extracted = _extract_refseq_rna_accessions_from_gene_xml(response.text)
+        if extracted:
+            accession_candidates.extend(extracted)
+        else:
+            gene_attempts.append(f"{gene_id}:no_refseq_rna")
+
+    accession_candidates = _dedupe_nonempty(accession_candidates)
+    if not accession_candidates:
+        detail = f"{search_label}:{sym}; no_refseq_rna"
+        if gene_attempts:
+            detail = f"{detail}; {'; '.join(gene_attempts)}"
+        return _result(sym, "symbol", status="unresolved", detail=detail, source="ncbi_gene")
+
+    attempt_notes: list[str] = []
+    for idx, accession in enumerate(accession_candidates):
+        seq_result = fetch_ncbi_accession(session, accession, timeout=timeout, query_id=sym)
+        if seq_result.sequence:
+            alternatives = tuple(acc for acc in accession_candidates if acc != accession)
+            status = "symbol_ncbi_gene_first_candidate_used" if len(accession_candidates) > 1 else "symbol_ncbi_gene_resolved"
+            detail = f"{search_label}:{sym}->{accession}"
+            if idx:
+                detail = f"candidate_index:{idx}; {detail}"
+            if alternatives:
+                detail = f"{detail}; alternatives:{'|'.join(alternatives)}"
+            if gene_attempts:
+                detail = f"{detail}; {'; '.join(gene_attempts)}"
+            return _result(
+                sym,
+                "symbol",
+                sequence=seq_result.sequence,
+                status=status,
+                detail=detail,
+                resolved_id=accession,
+                alternative_ids=alternatives,
+                source="ncbi_gene",
+            )
+        attempt_notes.append(f"{accession}:{seq_result.detail}")
+
+    detail = f"{search_label}:{sym}; {'; '.join(attempt_notes)}"
+    if gene_attempts:
+        detail = f"{detail}; {'; '.join(gene_attempts)}"
+    return _result(sym, "symbol", status="unresolved", detail=detail, source="ncbi_gene")
+
+
 def resolve_symbol_via_ncbi_search(
     session,
     symbol: str,
@@ -709,6 +987,10 @@ def resolve_symbol(
         "family_symbol",
         "cautious_clone_symbol_versioned",
     }:
+        ncbi_gene_result = resolve_symbol_via_ncbi_gene(session, sym, timeout=timeout, route=route)
+        if ncbi_gene_result.sequence:
+            return ncbi_gene_result
+        detail = f"{detail}; {ncbi_gene_result.detail}"
         ncbi_result = resolve_symbol_via_ncbi_search(session, sym, timeout=timeout, route=route)
         if ncbi_result.sequence:
             return ncbi_result
@@ -820,9 +1102,22 @@ def _fetch_sequence_by_id_core(session, raw_id: str, *, timeout: int = 10) -> Se
             detail=f"{result.detail}; retry_without_version:{rid}->{base_id}; {retry.detail}",
         )
     if route.namespace == "ncbi_symbol_search":
+        gene_result = resolve_symbol_via_ncbi_gene(session, rid, timeout=timeout, route=route)
+        if gene_result.sequence:
+            return gene_result
         result = resolve_symbol_via_ncbi_search(session, rid, timeout=timeout, route=route)
         if result.sequence:
             return result
+        if gene_result.detail:
+            result = _result(
+                rid,
+                "symbol",
+                status="unresolved",
+                detail=f"{gene_result.detail}; {result.detail}",
+                resolved_id=result.resolved_id or gene_result.resolved_id,
+                alternative_ids=result.alternative_ids or gene_result.alternative_ids,
+                source=result.source or gene_result.source,
+            )
         variants = _symbol_route_variants(route)
         if not variants:
             return result
@@ -886,9 +1181,30 @@ def fetch_sequence_by_id(
     *,
     timeout: int = 10,
     alias_candidates: tuple[str, ...] | list[str] | None = None,
+    overrides: dict[str, SequenceOverride] | None = None,
+    _override_seen: set[str] | None = None,
 ) -> SequenceFetchResult:
     rid = str(raw_id or "").strip()
+    override_result = _try_sequence_override(
+        session,
+        rid,
+        overrides=overrides,
+        timeout=timeout,
+        override_seen=set(_override_seen or set()),
+    )
+    if override_result is not None and override_result.sequence:
+        return override_result
     primary_result = _fetch_sequence_by_id_core(session, rid, timeout=timeout)
+    if override_result is not None and not override_result.sequence and not primary_result.sequence:
+        primary_result = _result(
+            rid,
+            primary_result.id_type,
+            status="unresolved",
+            detail=f"{override_result.detail}; {primary_result.detail}",
+            resolved_id=primary_result.resolved_id or override_result.resolved_id,
+            alternative_ids=primary_result.alternative_ids or override_result.alternative_ids,
+            source=primary_result.source or override_result.source,
+        )
     if primary_result.sequence:
         return primary_result
     candidates = extract_alias_candidates(rid, ()) if alias_candidates is None else list(alias_candidates)
@@ -907,9 +1223,10 @@ def _fetch_symbol_like_sequence(session, route: IdentifierRoute, *, timeout: int
     rid = route.normalized_id
     result = resolve_symbol(session, rid, timeout=timeout, route=route)
     variants = _symbol_route_variants(route)
-    if result.sequence or not variants:
-        variant_result = _retry_symbol_variants(session, route, result, timeout=timeout, seen=seen)
-        return variant_result if variant_result is not None else result
+    if result.sequence:
+        return result
+    if not variants:
+        return result
     next_variant = variants[0]
     next_route = detect_id_route(next_variant)
     retry = _fetch_symbol_like_sequence(session, next_route, timeout=timeout, seen=seen | {next_variant})

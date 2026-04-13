@@ -33,6 +33,7 @@ def main(argv: list[str] | None = None):
     out_dir = PROJECT_ROOT / "Data/output_data"
     paths = RefetchPaths(
         raw_website=PROJECT_ROOT / "Data/raw/website_alldata.csv",
+        sequence_overrides=PROJECT_ROOT / "Data/raw/sequence_id_overrides.csv",
         website_sequences=out_dir / "website_sequences.csv",
         website_full=out_dir / "website_full_matrix.csv",
         website_oop=out_dir / "website_sequences_for_oop.csv",
