@@ -30,6 +30,19 @@ except ImportError:
     HAS_TQDM = False
 
 
+def set_max_csv_field_size_limit() -> None:
+    limit = sys.maxsize
+    while True:
+        try:
+            csv.field_size_limit(limit)
+            return
+        except OverflowError:
+            limit //= 10
+
+
+set_max_csv_field_size_limit()
+
+
 def load_requests():
     try:
         import requests
@@ -67,12 +80,20 @@ NCBI_EFETCH = (
     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
     "?db=nucleotide&id={value}&rettype=fasta&retmode=text"
 )
+NCBI_GENE_ESEARCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+NCBI_GENE_ESUMMARY = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
 
 RETRY_STATUSES = [429, 500, 502, 503, 504]
 VALID_NUCLEOTIDE_CHARS = set("ACGTUNRYSWKMBDHVX")
 RNACENTRAL_ID_RE = re.compile(r"^NON(?:HSAT|MMUT)\d+(?:\.\d+)?$", re.I)
-LNCIPEDIA_ID_RE = re.compile(r"^(?:LNC[-_].+|lnc[-_].+|Lnc[-_].+|lnr.+)$")
-ENSEMBL_CLONE_RE = re.compile(r"^(?:AC|AL)\d{5,6}(?:\.\d+)?(?:[-:]\d+)?$", re.I)
+FANTOM_ID_RE = re.compile(r"^fantom(?:3|5)_[A-Za-z0-9._-]+$", re.I)
+LNCIPEDIA_ID_RE = re.compile(r"^(?:LNC[-_].+|LNCV.+|lnc[-_].+|Lnc[-_].+|lnr.+)$")
+ASSEMBLER_ID_RE = re.compile(r"^(?:TCONS?[_A-Za-z0-9.-]+|XLOC[_A-Za-z0-9.-]+)$", re.I)
+LOC_SYMBOL_RE = re.compile(r"^LOC\d+(?:[._:-].+)?$", re.I)
+ENSEMBL_CLONE_RE = re.compile(
+    r"^(?:(?:AC|AL)\d{5,6}|RP\d+-[A-Za-z0-9]+)(?:\.\d+)?(?:[-:]\d+)?$",
+    re.I,
+)
 ENSEMBL_ARCHIVE_RE = re.compile(r"^(?:ENSG|ENST)\d+(?:\.\d+)?$", re.I)
 NCBI_ACCESSION_RE = re.compile(r"^(?:AJ|AP|AF)\d+(?:\.\d+)?(?:[-:]\d+)?$", re.I)
 UCSC_RE = re.compile(r"^uc\d{3}[a-z]{3}(?:\.\d+)?$", re.I)
@@ -224,6 +245,20 @@ def load_fasta_index(path: Path | None) -> dict[str, str]:
     return index
 
 
+def load_tab_mapping(path: Path | None, key_column: str, value_column: str) -> dict[str, str]:
+    if path is None or not path.exists():
+        return {}
+    mapping: dict[str, str] = {}
+    with path.open(newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh, delimiter="\t")
+        for row in reader:
+            key = str(row.get(key_column) or "").strip()
+            value = str(row.get(value_column) or "").strip()
+            if key and value:
+                mapping[key] = value
+    return mapping
+
+
 def build_variants(raw_id: str) -> list[str]:
     value = str(raw_id or "").strip()
     variants = [value]
@@ -245,12 +280,42 @@ def build_variants(raw_id: str) -> list[str]:
     return variants
 
 
+def lncipedia_conversion_variants(raw_id: str) -> list[str]:
+    value = str(raw_id or "").strip()
+    variants = [value]
+
+    lowered_lnc = re.sub(r"^(?:LNC|Lnc|lnc)-", "lnc-", value)
+    if lowered_lnc != value and lowered_lnc not in variants:
+        variants.append(lowered_lnc)
+
+    lowered_lnc_underscore = re.sub(r"^(?:LNC|Lnc|lnc)_", "lnc-", value)
+    if lowered_lnc_underscore != value and lowered_lnc_underscore not in variants:
+        variants.append(lowered_lnc_underscore)
+
+    generic_underscore_to_dash = value.replace("_", "-")
+    if generic_underscore_to_dash != value and generic_underscore_to_dash not in variants:
+        variants.append(generic_underscore_to_dash)
+
+    if generic_underscore_to_dash != value:
+        normalized_dash_lnc = re.sub(r"^(?:LNC|Lnc|lnc)-", "lnc-", generic_underscore_to_dash)
+        if normalized_dash_lnc not in variants:
+            variants.append(normalized_dash_lnc)
+
+    return variants
+
+
 def classify(raw_id: str) -> str:
     value = str(raw_id or "").strip()
     if RNACENTRAL_ID_RE.match(value):
         return "rnacentral_noncode"
+    if FANTOM_ID_RE.match(value):
+        return "rnacentral_external"
     if LNCIPEDIA_ID_RE.match(value):
         return "lncipedia_local"
+    if ASSEMBLER_ID_RE.match(value):
+        return "assembler_id"
+    if LOC_SYMBOL_RE.match(value):
+        return "loc_symbol"
     if ENSEMBL_CLONE_RE.match(value):
         return "ensembl_clone"
     if ENSEMBL_ARCHIVE_RE.match(value):
@@ -266,7 +331,10 @@ def print_classification_summary(rows: list[dict[str, str]]) -> None:
     counts = Counter(classify(row.get("id", "")) for row in rows)
     labels = {
         "rnacentral_noncode": "RNAcentral NONCODE",
+        "rnacentral_external": "RNAcentral external ID",
         "lncipedia_local": "LNCipedia local FASTA",
+        "assembler_id": "Assembler-only ID",
+        "loc_symbol": "NCBI LOC symbol",
         "ensembl_clone": "Ensembl clone symbol",
         "ensembl_archive": "Ensembl archive",
         "ncbi_accession": "NCBI accession",
@@ -279,7 +347,10 @@ def print_classification_summary(rows: list[dict[str, str]]) -> None:
     print("-" * 54)
     for route in (
         "rnacentral_noncode",
+        "rnacentral_external",
         "lncipedia_local",
+        "assembler_id",
+        "loc_symbol",
         "ensembl_clone",
         "ensembl_archive",
         "ncbi_accession",
@@ -501,6 +572,28 @@ def recursive_string_values(blob: Any) -> list[str]:
     return values
 
 
+def extract_ensembl_ids_from_blob(blob: Any) -> list[str]:
+    candidates: list[str] = []
+    for value in recursive_string_values(blob):
+        for match in ENSEMBL_STABLE_RE.findall(value):
+            stable_id = VERSIONED_ENS_RE.sub(r"\1", match)
+            if stable_id not in candidates:
+                candidates.append(stable_id)
+    return candidates
+
+
+def extract_loc_refseq_rna_ids_from_blob(blob: Any) -> list[str]:
+    candidates: list[str] = []
+    for value in recursive_string_values(blob):
+        for match in REFSEQ_RNA_RE.findall(value):
+            clean = str(match).strip()
+            if not clean.upper().startswith(("NR_", "XR_")):
+                continue
+            if clean not in candidates:
+                candidates.append(clean)
+    return candidates
+
+
 def ucsc_candidate_ids(row: dict[str, Any]) -> tuple[list[str], list[str], list[str]]:
     text_blob = json.dumps(row, sort_keys=True)
     ensembl_ids = []
@@ -617,33 +710,119 @@ def resolve_noncode(
     return None, "; ".join(attempted) if attempted else "rnacentral_empty"
 
 
-def resolve_lncipedia(
+def resolve_rnacentral_external(
     raw_id: str,
     variants: list[str],
     *,
-    lncipedia_index: dict[str, str],
+    session: requests.Session,
+    error_log: Path,
 ) -> tuple[SequenceHit | None, str]:
-    if not lncipedia_index:
-        return None, "lncipedia_no_local_fasta"
     attempted: list[str] = []
     for candidate in variants:
-        seq = normalize_sequence_value(lncipedia_index.get(candidate, ""))
+        seq, resolved_id = rnacentral_sequence_from_candidate(candidate, session, error_log=error_log)
         if seq:
             return (
                 SequenceHit(
                     query_id=raw_id,
                     matched_query=candidate,
-                    route="lncipedia_local",
-                    resolved_id=candidate,
-                    resolved_id_type="lncipedia_transcript",
+                    route="rnacentral_external",
+                    resolved_id=resolved_id,
+                    resolved_id_type="rnacentral_external",
                     sequence=seq,
-                    source="lncipedia_fasta",
+                    source="rnacentral",
                     confidence=confidence_for_match(raw_id, candidate),
                 ),
                 "",
             )
-        attempted.append(f"{candidate}:lncipedia_fasta_empty")
-    return None, "; ".join(attempted)
+        attempted.append(f"{candidate}:rnacentral_empty")
+    return None, "; ".join(attempted) if attempted else "rnacentral_empty"
+
+
+def resolve_lncipedia(
+    raw_id: str,
+    variants: list[str],
+    *,
+    lncipedia_index: dict[str, str],
+    lncipedia_transcript_map: dict[str, str],
+    lncipedia_gene_map: dict[str, str],
+    session: requests.Session,
+    error_log: Path,
+) -> tuple[SequenceHit | None, str]:
+    if not lncipedia_index:
+        attempted: list[str] = []
+    else:
+        attempted = []
+        for candidate in variants:
+            seq = normalize_sequence_value(lncipedia_index.get(candidate, ""))
+            if seq:
+                return (
+                    SequenceHit(
+                        query_id=raw_id,
+                        matched_query=candidate,
+                        route="lncipedia_local",
+                        resolved_id=candidate,
+                        resolved_id_type="lncipedia_transcript",
+                        sequence=seq,
+                        source="lncipedia_fasta",
+                        confidence=confidence_for_match(raw_id, candidate),
+                    ),
+                    "",
+                )
+            attempted.append(f"{candidate}:lncipedia_fasta_empty")
+
+    conversion_attempted: list[str] = []
+    for candidate in variants:
+        for normalized in lncipedia_conversion_variants(candidate):
+            transcript_id = str(lncipedia_transcript_map.get(normalized) or "").strip()
+            if transcript_id:
+                seq, resolved_id, resolved_type = fetch_ensembl_from_stable_id(
+                    transcript_id,
+                    session,
+                    error_log=error_log,
+                )
+                if seq:
+                    return (
+                        SequenceHit(
+                            query_id=raw_id,
+                            matched_query=normalized,
+                            route="lncipedia_local",
+                            resolved_id=resolved_id,
+                            resolved_id_type=resolved_type,
+                            sequence=seq,
+                            source="lncipedia_conversion_transcript",
+                            confidence=confidence_for_match(raw_id, normalized),
+                        ),
+                        "",
+                    )
+                conversion_attempted.append(f"{normalized}:lncipedia_conversion_transcript_cdna_empty")
+
+            gene_key = normalized.split(":", 1)[0]
+            gene_id = str(lncipedia_gene_map.get(gene_key) or "").strip()
+            if gene_id:
+                seq, resolved_id, resolved_type = fetch_ensembl_from_stable_id(
+                    gene_id,
+                    session,
+                    error_log=error_log,
+                )
+                if seq:
+                    return (
+                        SequenceHit(
+                            query_id=raw_id,
+                            matched_query=gene_key,
+                            route="lncipedia_local",
+                            resolved_id=resolved_id,
+                            resolved_id_type=resolved_type,
+                            sequence=seq,
+                            source="lncipedia_conversion_gene",
+                            confidence=confidence_for_match(raw_id, gene_key),
+                        ),
+                        "",
+                    )
+                conversion_attempted.append(f"{gene_key}:lncipedia_conversion_gene_cdna_empty")
+
+    if not lncipedia_index and not lncipedia_transcript_map and not lncipedia_gene_map:
+        return None, "lncipedia_no_local_fasta_or_conversion_table"
+    return None, "; ".join([*attempted, *conversion_attempted]) if (attempted or conversion_attempted) else "lncipedia_fasta_empty"
 
 
 def resolve_ensembl_clone(
@@ -774,6 +953,109 @@ def resolve_ncbi_accession(
     return None, "; ".join(attempted) if attempted else "ncbi_efetch_empty"
 
 
+def resolve_loc_symbol(
+    raw_id: str,
+    variants: list[str],
+    *,
+    session: requests.Session,
+    error_log: Path,
+) -> tuple[SequenceHit | None, str]:
+    attempted: list[str] = []
+    for candidate in variants:
+        search_data = get_json(
+            session,
+            NCBI_GENE_ESEARCH,
+            error_log=error_log,
+            params={
+                "db": "gene",
+                "term": f"{candidate}[Gene Name] AND Homo sapiens[Organism]",
+                "retmode": "json",
+                "retmax": 5,
+            },
+            headers={"Accept": "application/json"},
+        )
+        if not isinstance(search_data, dict):
+            attempted.append(f"{candidate}:ncbi_gene_search_empty")
+            continue
+        gene_ids = [
+            str(value).strip()
+            for value in (search_data.get("esearchresult", {}) or {}).get("idlist", [])
+            if str(value).strip()
+        ]
+        if not gene_ids:
+            attempted.append(f"{candidate}:ncbi_gene_search_empty")
+            continue
+
+        summary_data = get_json(
+            session,
+            NCBI_GENE_ESUMMARY,
+            error_log=error_log,
+            params={"db": "gene", "id": ",".join(gene_ids), "retmode": "json"},
+            headers={"Accept": "application/json"},
+        )
+        if not isinstance(summary_data, dict):
+            attempted.append(f"{candidate}:ncbi_gene_summary_empty")
+            continue
+
+        summary_result = summary_data.get("result", {}) if isinstance(summary_data.get("result"), dict) else {}
+        ensembl_ids: list[str] = []
+        refseq_rna_ids: list[str] = []
+        for gene_id in gene_ids:
+            doc = summary_result.get(gene_id)
+            if not isinstance(doc, dict):
+                continue
+            for stable_id in extract_ensembl_ids_from_blob(doc):
+                if stable_id not in ensembl_ids:
+                    ensembl_ids.append(stable_id)
+            for accession in extract_loc_refseq_rna_ids_from_blob(doc):
+                if accession not in refseq_rna_ids:
+                    refseq_rna_ids.append(accession)
+
+        for stable_id in ensembl_ids:
+            seq, transcript_id, resolved_type = fetch_ensembl_from_stable_id(stable_id, session, error_log=error_log)
+            if seq:
+                return (
+                    SequenceHit(
+                        query_id=raw_id,
+                        matched_query=candidate,
+                        route="loc_symbol",
+                        resolved_id=transcript_id,
+                        resolved_id_type=resolved_type,
+                        sequence=seq,
+                        source="ncbi_gene_ensembl_cdna",
+                        confidence=confidence_for_match(raw_id, candidate),
+                    ),
+                    "",
+                )
+        if ensembl_ids:
+            attempted.append(f"{candidate}:ncbi_gene_ensembl_cdna_empty")
+        else:
+            attempted.append(f"{candidate}:ncbi_gene_summary_ensembl_empty")
+
+        for accession in refseq_rna_ids:
+            seq, resolved_accession = fetch_ncbi_accession(accession, session, error_log=error_log)
+            if seq:
+                return (
+                    SequenceHit(
+                        query_id=raw_id,
+                        matched_query=candidate,
+                        route="loc_symbol",
+                        resolved_id=resolved_accession,
+                        resolved_id_type="ncbi_accession",
+                        sequence=seq,
+                        source="ncbi_gene_refseq_rna",
+                        confidence=confidence_for_match(raw_id, candidate),
+                    ),
+                    "",
+                )
+        if refseq_rna_ids:
+            attempted.append(f"{candidate}:ncbi_gene_refseq_rna_empty")
+        else:
+            attempted.append(f"{candidate}:ncbi_gene_summary_refseq_rna_empty")
+
+    return None, "; ".join(attempted) if attempted else "ncbi_gene_search_empty"
+
+
 def resolve_hgnc_symbol(
     raw_id: str,
     variants: list[str],
@@ -877,6 +1159,8 @@ def resolve_one(
     error_log: Path,
     noncode_index: dict[str, str],
     lncipedia_index: dict[str, str],
+    lncipedia_transcript_map: dict[str, str],
+    lncipedia_gene_map: dict[str, str],
     archive_map: dict[str, str],
 ) -> tuple[SequenceHit | None, ResidualHit]:
     raw_id = str(row.get("id") or "").strip()
@@ -886,8 +1170,22 @@ def resolve_one(
 
     if route == "rnacentral_noncode":
         hit, reason = resolve_noncode(raw_id, variants, session=session, error_log=error_log, noncode_index=noncode_index)
+    elif route == "rnacentral_external":
+        hit, reason = resolve_rnacentral_external(raw_id, variants, session=session, error_log=error_log)
     elif route == "lncipedia_local":
-        hit, reason = resolve_lncipedia(raw_id, variants, lncipedia_index=lncipedia_index)
+        hit, reason = resolve_lncipedia(
+            raw_id,
+            variants,
+            lncipedia_index=lncipedia_index,
+            lncipedia_transcript_map=lncipedia_transcript_map,
+            lncipedia_gene_map=lncipedia_gene_map,
+            session=session,
+            error_log=error_log,
+        )
+    elif route == "assembler_id":
+        hit, reason = None, "assembler_id_unresolvable"
+    elif route == "loc_symbol":
+        hit, reason = resolve_loc_symbol(raw_id, variants, session=session, error_log=error_log)
     elif route == "ensembl_clone":
         hit, reason = resolve_ensembl_clone(raw_id, variants, session=session, error_log=error_log)
     elif route == "ensembl_archive":
@@ -1003,6 +1301,16 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--checkpoint-dir", default=str(make_default_path("Data/output_data")))
     parser.add_argument("--noncode-fasta", help="Optional local NONCODE FASTA. Used before RNAcentral when provided.")
     parser.add_argument("--lncipedia-fasta", help="Required local FASTA for LNCipedia-style IDs if you want them resolved.")
+    parser.add_argument(
+        "--lncipedia-transcript-map",
+        default=str(make_default_path("Data/Conversion-table/lncipedia_5_2_ensembl_92.txt")),
+        help="Path to LNCipedia transcript-to-Ensembl conversion table",
+    )
+    parser.add_argument(
+        "--lncipedia-gene-map",
+        default=str(make_default_path("Data/Conversion-table/lncipedia_5_2_ensembl_92_genes.txt")),
+        help="Path to LNCipedia gene-to-Ensembl conversion table",
+    )
     parser.add_argument("--delay", type=float, default=0.25)
     parser.add_argument("--resume", action="store_true", help="Resume from an existing input-specific checkpoint.")
     args = parser.parse_args(argv)
@@ -1020,10 +1328,24 @@ def main(argv: list[str] | None = None) -> None:
 
     noncode_index = load_fasta_index(Path(args.noncode_fasta).resolve()) if args.noncode_fasta else {}
     lncipedia_index = load_fasta_index(Path(args.lncipedia_fasta).resolve()) if args.lncipedia_fasta else {}
+    lncipedia_transcript_map = load_tab_mapping(
+        Path(args.lncipedia_transcript_map).resolve() if args.lncipedia_transcript_map else None,
+        "lncipediaTranscriptID",
+        "ensemblTranscriptID",
+    )
+    lncipedia_gene_map = load_tab_mapping(
+        Path(args.lncipedia_gene_map).resolve() if args.lncipedia_gene_map else None,
+        "lncipediaGeneID",
+        "ensemblGeneID",
+    )
     if noncode_index:
         print(f"[index] NONCODE FASTA entries: {len(noncode_index)}")
     if lncipedia_index:
         print(f"[index] LNCipedia FASTA entries: {len(lncipedia_index)}")
+    if lncipedia_transcript_map:
+        print(f"[index] LNCipedia transcript conversion rows: {len(lncipedia_transcript_map)}")
+    if lncipedia_gene_map:
+        print(f"[index] LNCipedia gene conversion rows: {len(lncipedia_gene_map)}")
 
     session = make_session(args.delay)
     checkpoint_payload = load_checkpoint(checkpoint_path) if args.resume else {}
@@ -1053,6 +1375,8 @@ def main(argv: list[str] | None = None) -> None:
             error_log=error_log_path,
             noncode_index=noncode_index,
             lncipedia_index=lncipedia_index,
+            lncipedia_transcript_map=lncipedia_transcript_map,
+            lncipedia_gene_map=lncipedia_gene_map,
             archive_map=archive_map,
         )
         if hit is not None:
