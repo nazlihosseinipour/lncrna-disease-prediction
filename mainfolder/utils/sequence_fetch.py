@@ -14,6 +14,7 @@ ENSEMBL_XREF = "https://rest.ensembl.org/xrefs/symbol/homo_sapiens/{symbol}"
 ENSEMBL_XREF_NAME = "https://rest.ensembl.org/xrefs/name/homo_sapiens/{symbol}"
 ENSEMBL_SEQ = "https://rest.ensembl.org/sequence/id/{ensembl_id}"
 ENSEMBL_ARCHIVE = "https://rest.ensembl.org/archive/id/{ensembl_id}"
+RNACENTRAL_EXTERNAL = "https://rnacentral.org/api/v1/rna/?external_id={external_id}&format=json"
 NCBI_EFETCH = (
     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
     "?db=nuccore&id={accession}&rettype=fasta&retmode=text"
@@ -82,6 +83,8 @@ OCR_NEAR_MATCH_SWAPS = {
     ("0", "O"),
 }
 REFSEQ_RNA_ACCESSION_RE = re.compile(r"\b(?:NR|NM|XR|XM)_\d+(?:\.\d+)?\b", re.I)
+ASSEMBLER_ID_RE = re.compile(r"^(?:TCONS?[_A-Za-z0-9.-]+|XLOC[_A-Za-z0-9.-]+)$", re.I)
+FANTOM_ID_RE = re.compile(r"^FANTOM(?:3|5)_[A-Z0-9._-]+$", re.I)
 
 
 @dataclass(frozen=True)
@@ -331,6 +334,10 @@ def detect_id_route(raw_id: str) -> IdentifierRoute:
     upper = rid.upper()
     if not rid:
         return IdentifierRoute(rid, "empty", "empty", "empty", rid)
+    if ASSEMBLER_ID_RE.match(rid):
+        return IdentifierRoute(rid, "assembler_id", "unresolvable", "symbol", rid)
+    if FANTOM_ID_RE.match(upper):
+        return IdentifierRoute(rid, "fantom_external_id", "rnacentral_external", "symbol", rid)
     if SAFE_VERSIONED_ID_RE.match(rid):
         family = "ensembl_versioned" if upper.startswith("ENS") else "refseq_versioned"
         namespace = "ensembl" if upper.startswith("ENS") else "ncbi_nuccore"
@@ -519,6 +526,58 @@ def fetch_ncbi_accession(session, accession: str, *, timeout: int = 10, query_id
     if not seq:
         return _result(qid, "accession", status="unresolved", detail=f"ncbi_empty:{acc}")
     return _result(qid, "accession", sequence=seq, status="accession_fetched", detail=f"ncbi:{acc}", resolved_id=acc)
+
+
+def fetch_rnacentral_external_id(
+    session,
+    external_id: str,
+    *,
+    timeout: int = 10,
+    query_id: str | None = None,
+) -> SequenceFetchResult:
+    rid = str(query_id or external_id or "").strip()
+    ext_id = str(external_id or "").strip()
+    response, exc = _request_with_retry(
+        session,
+        RNACENTRAL_EXTERNAL.format(external_id=quote(ext_id, safe="")),
+        headers={"Accept": "application/json"},
+        timeout=timeout,
+    )
+    if exc is not None:
+        return _result(rid, "symbol", status="unresolved", detail=f"rnacentral_err:{exc}", resolved_id=ext_id, source="rnacentral")
+    if response.status_code != 200:
+        return _result(rid, "symbol", status="unresolved", detail=f"rnacentral_status:{response.status_code}", resolved_id=ext_id, source="rnacentral")
+    try:
+        payload = response.json() or {}
+    except Exception as exc:
+        return _result(rid, "symbol", status="unresolved", detail=f"rnacentral_json_err:{exc}", resolved_id=ext_id, source="rnacentral")
+
+    docs: list[dict] = []
+    if isinstance(payload, list):
+        docs = [item for item in payload if isinstance(item, dict)]
+    elif isinstance(payload, dict):
+        for key in ("results", "data"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                docs = [item for item in value if isinstance(item, dict)]
+                break
+        if not docs:
+            docs = [payload]
+
+    for doc in docs:
+        seq = normalize_sequence_value(str(doc.get("sequence") or ""))
+        if seq:
+            resolved_id = str(doc.get("rnacentral_id") or doc.get("rna_id") or ext_id).strip()
+            return _result(
+                rid,
+                "symbol",
+                sequence=seq,
+                status="rnacentral_external_fetched",
+                detail=f"rnacentral_external:{ext_id}",
+                resolved_id=resolved_id,
+                source="rnacentral",
+            )
+    return _result(rid, "symbol", status="unresolved", detail=f"rnacentral_empty:{ext_id}", resolved_id=ext_id, source="rnacentral")
 
 
 def _dedupe_nonempty(values) -> list[str]:
@@ -1003,6 +1062,16 @@ def _fetch_sequence_by_id_core(session, raw_id: str, *, timeout: int = 10) -> Se
     rid = route.normalized_id
     if route.namespace == "empty":
         return _result(rid, "empty", status="unresolved", detail="empty_id")
+    if route.namespace == "unresolvable":
+        return _result(
+            rid,
+            route.id_type,
+            status="unresolved",
+            detail="assembler_id_unresolvable",
+            source="pre_filter",
+        )
+    if route.namespace == "rnacentral_external":
+        return fetch_rnacentral_external_id(session, rid, timeout=timeout)
     if route.namespace == "ensembl":
         result = fetch_ensembl_sequence(session, rid, timeout=timeout)
         base_id, can_retry = strip_safe_version_suffix(rid)

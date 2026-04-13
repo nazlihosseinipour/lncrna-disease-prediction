@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 import time
 
 import pandas as pd
@@ -23,6 +25,28 @@ from mainfolder.utils.sequence_fetch import (
 TEXT_ALIAS_COLUMNS = ["Description", "Clinical Application", "Causal Description"]
 
 
+def _set_max_csv_field_size_limit() -> None:
+    limit = sys.maxsize
+    while True:
+        try:
+            csv.field_size_limit(limit)
+            return
+        except OverflowError:
+            limit //= 10
+
+
+def _read_csv_str(path: Path) -> pd.DataFrame:
+    _set_max_csv_field_size_limit()
+    return pd.read_csv(path, dtype=str, engine="python").fillna("")
+
+
+def _read_csv_rows(path: Path) -> list[dict[str, str]]:
+    _set_max_csv_field_size_limit()
+    with path.open(newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        return [{str(k): str(v or "") for k, v in row.items()} for row in reader]
+
+
 @dataclass(frozen=True)
 class RefetchPaths:
     raw_website: Path
@@ -40,7 +64,7 @@ class RefetchPaths:
 def load_alias_map(raw_website: Path, target_ids: list[str]) -> dict[str, list[str]]:
     if not raw_website.exists():
         return {}
-    flt = pd.read_csv(raw_website, dtype=str).fillna("")
+    flt = _read_csv_str(raw_website)
     if "ncRNA Symbol" not in flt.columns:
         return {}
     text_cols = [c for c in TEXT_ALIAS_COLUMNS if c in flt.columns]
@@ -71,7 +95,7 @@ def load_human_and_nonhuman_unresolved(
         empty_nonhuman = empty.assign(species_hint=pd.Series(dtype=str), non_human_reason=pd.Series(dtype=str))
         return empty, empty_nonhuman
 
-    unresolved_df = pd.read_csv(unresolved_csv, dtype=str).fillna("")
+    unresolved_df = _read_csv_str(unresolved_csv)
     human_df, nonhuman_df = split_nonhuman_unresolved_df(unresolved_df)
     if not human_df.empty:
         human_df = human_df.drop_duplicates(subset=["id"], keep="first")
@@ -120,7 +144,7 @@ def update_website_sequences(website_sequences: Path, results: list[SequenceFetc
     if not website_sequences.exists():
         raise FileNotFoundError(f"Missing sequence table: {website_sequences}")
 
-    seq_df = pd.read_csv(website_sequences, dtype=str).fillna("")
+    seq_df = _read_csv_str(website_sequences)
     if "ID" not in seq_df.columns or "seqs" not in seq_df.columns:
         raise ValueError(f"{website_sequences} must have columns ID,seqs")
     seq_df["ID"] = seq_df["ID"].astype(str).str.strip()
@@ -147,38 +171,47 @@ def update_fetch_report(
     results: list[SequenceFetchResult],
     nonhuman_df: pd.DataFrame,
 ) -> pd.DataFrame:
+    fieldnames = ["ID", "type", "status", "detail", "resolved_id"]
+    rows_by_id: dict[str, dict[str, str]] = {}
+
     if fetch_report.exists():
-        report_df = pd.read_csv(fetch_report, dtype=str).fillna("")
-    else:
-        report_df = pd.DataFrame(columns=["ID", "type", "status", "detail", "resolved_id"])
+        for row in _read_csv_rows(fetch_report):
+            rid = str(row.get("ID", "")).strip()
+            if not rid:
+                continue
+            rows_by_id[rid] = {
+                "ID": rid,
+                "type": str(row.get("type", "")).strip(),
+                "status": str(row.get("status", "")).strip(),
+                "detail": str(row.get("detail", "")).strip(),
+                "resolved_id": str(row.get("resolved_id", "")).strip(),
+            }
 
-    if "ID" not in report_df.columns:
-        report_df["ID"] = pd.Series(dtype=str)
-    for col in ["type", "status", "detail", "resolved_id"]:
-        if col not in report_df.columns:
-            report_df[col] = ""
-    report_df["ID"] = report_df["ID"].astype(str).str.strip()
-    report_df = report_df.set_index("ID", drop=False)
-
-    for rid in seq_df["ID"].astype(str).tolist():
-        if rid not in report_df.index:
-            report_df.loc[rid, ["ID", "type", "status", "detail", "resolved_id"]] = [
-                rid,
-                detect_id_kind(rid),
-                "cached" if has_usable_sequence_value(seq_df.loc[seq_df["ID"] == rid, "seqs"].iloc[0]) else "pending",
-                "",
-                "",
-            ]
+    seq_rows = seq_df[["ID", "seqs"]].drop_duplicates(subset=["ID"], keep="first")
+    for seq_row in seq_rows.to_dict("records"):
+        rid = str(seq_row.get("ID", "")).strip()
+        if not rid or rid in rows_by_id:
+            continue
+        rows_by_id[rid] = {
+            "ID": rid,
+            "type": detect_id_kind(rid),
+            "status": "cached" if has_usable_sequence_value(seq_row.get("seqs", "")) else "pending",
+            "detail": "",
+            "resolved_id": "",
+        }
 
     for result in results:
         row = result.report_row(id_column="ID")
-        report_df.loc[result.query_id, ["ID", "type", "status", "detail", "resolved_id"]] = [
-            row["ID"],
-            row["type"],
-            row["status"],
-            row["detail"],
-            row["resolved_id"],
-        ]
+        rid = str(row.get("ID", "")).strip()
+        if not rid:
+            continue
+        rows_by_id[rid] = {
+            "ID": rid,
+            "type": str(row.get("type", "")).strip(),
+            "status": str(row.get("status", "")).strip(),
+            "detail": str(row.get("detail", "")).strip(),
+            "resolved_id": str(row.get("resolved_id", "")).strip(),
+        }
 
     if not nonhuman_df.empty:
         for row in nonhuman_df.to_dict("records"):
@@ -190,18 +223,20 @@ def update_fetch_report(
             nonhuman_reason = str(row.get("non_human_reason", "")).strip()
             prefix = f"non_human:{species}:{nonhuman_reason}".strip(":")
             detail = f"{prefix}; {detail}" if detail else prefix
-            report_df.loc[rid, ["ID", "type", "status", "detail", "resolved_id"]] = [
-                rid,
-                str(row.get("type", detect_id_kind(rid))),
-                "unresolved_non_human",
-                detail,
-                str(row.get("resolved_id", "")),
-            ]
+            rows_by_id[rid] = {
+                "ID": rid,
+                "type": str(row.get("type", detect_id_kind(rid))).strip(),
+                "status": "unresolved_non_human",
+                "detail": detail,
+                "resolved_id": str(row.get("resolved_id", "")).strip(),
+            }
 
-    report_df = report_df.reset_index(drop=True)
-    report_df = report_df.sort_values("ID").drop_duplicates(subset=["ID"], keep="first")
-    report_df.to_csv(fetch_report, index=False)
-    return report_df
+    ordered_rows = [rows_by_id[rid] for rid in sorted(rows_by_id)]
+    with fetch_report.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(ordered_rows)
+    return pd.DataFrame(ordered_rows, columns=fieldnames)
 
 
 def update_unresolved_outputs(
@@ -228,7 +263,7 @@ def update_unresolved_outputs(
 
     alternative_rows = [r.alternatives_row() for r in results if r.alternative_ids]
     if ambiguous_csv.exists():
-        existing_alt = pd.read_csv(ambiguous_csv, dtype=str).fillna("")
+        existing_alt = _read_csv_str(ambiguous_csv)
     else:
         existing_alt = pd.DataFrame(columns=["query_id", "selected_id", "alternative_ids", "source"])
     new_alt = pd.DataFrame(alternative_rows, columns=["query_id", "selected_id", "alternative_ids", "source"])
@@ -250,7 +285,7 @@ def rebuild_sequence_outputs(
     website_missing_ids: Path,
 ) -> tuple[int, int]:
     if website_full.exists():
-        full_df = pd.read_csv(website_full, dtype=str).fillna("")
+        full_df = _read_csv_str(website_full)
         if {"ID", "seqs"}.issubset(full_df.columns):
             full_df = full_df.drop(columns=["seqs"]).merge(seq_df[["ID", "seqs"]], on="ID", how="left")
             disease_cols = [c for c in full_df.columns if c not in {"seqs"}]
@@ -312,7 +347,9 @@ def refetch_human_unresolved_only(
         progress_every=progress_every,
     )
 
+    print("[phase] updating website_sequences.csv")
     seq_df = update_website_sequences(paths.website_sequences, results)
+    print("[phase] updating unresolved/non-human outputs")
     unresolved_df, nonhuman_df = update_unresolved_outputs(
         paths.unresolved_ids,
         paths.non_human_unresolved_ids,
@@ -320,12 +357,14 @@ def refetch_human_unresolved_only(
         results,
         nonhuman_unresolved_df,
     )
+    print("[phase] updating sequence_fetch_report.csv")
     update_fetch_report(
         paths.fetch_report,
         seq_df=seq_df,
         results=results,
         nonhuman_df=nonhuman_df,
     )
+    print("[phase] rebuilding website_full_matrix.csv and website_sequences_for_oop.csv")
     oop_rows, missing_count = rebuild_sequence_outputs(
         seq_df=seq_df,
         website_full=paths.website_full,

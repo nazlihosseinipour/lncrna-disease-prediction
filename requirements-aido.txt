@@ -1,0 +1,10 @@
+# Optional dependencies for the AIDO backend.
+# Install these in a separate environment from the main MP-RNA/Transformers 5.x env.
+
+numpy==1.26.4
+pandas==2.3.3
+torch==2.9.0
+protobuf==7.34.1
+sentencepiece==0.2.1
+tiktoken==0.12.0
+modelgenerator==0.1.3.post0

@@ -30,8 +30,9 @@ class AIDORNAEncoder(ABC):
         except ImportError as exc:
             raise ImportError(
                 "AIDO requires the ModelGenerator package. "
-                "Install the official AIDO/ModelGenerator inference dependencies "
-                "before running AIDO NN methods."
+                "Install the AIDO-specific dependencies in a separate environment, "
+                "for example with `pip install -r requirements-aido.txt` plus the "
+                "official openfold and dllogger extras, before running AIDO NN methods."
             ) from exc
 
         self.model = Embed.from_config({"model.backbone": self.backbone_name}).eval()
