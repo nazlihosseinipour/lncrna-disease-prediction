@@ -21,6 +21,7 @@ from mainfolder.core.feature_extractor import FeatureExtractor
 from mainfolder.features.nn_features import NNFeatures
 from mainfolder.utils.loader import preprocess_sequences
 from mainfolder.utils.utils import ALPHABET
+from mainfolder.utils.output_summary import add_shape_record, shape_from_result, write_shape_summary
 
 
 def normalize_id_seq(csv_path: Path):
@@ -83,6 +84,7 @@ def main():
 
     out_base = Path(args.outdir) / args.version_name / "nn"
     out_base.mkdir(parents=True, exist_ok=True)
+    shape_records = []
 
     method_ids = sorted(NNFeatures.METHOD_MAP.keys())
     if args.methods:
@@ -141,9 +143,21 @@ def main():
             out_path = out_base / f"{stem}_{name}.csv"
             if isinstance(df, pd.DataFrame):
                 df.to_csv(out_path, index=False)
+                rows, ncols = shape_from_result(df)
             else:
                 pd.DataFrame(df, columns=cols).to_csv(out_path, index=False)
+                rows, ncols = shape_from_result(df, cols)
             success_count += 1
+            add_shape_record(
+                shape_records,
+                feature_group="nn",
+                feature_name=name,
+                method_id=mid,
+                source_name=stem,
+                output_path=out_path,
+                rows=rows,
+                cols=ncols,
+            )
             print(f"[saved] {out_path}")
 
         if failures:
@@ -155,6 +169,9 @@ def main():
                 f"All NN methods failed for {seqs_path}. "
                 f"See {out_base / f'{stem}_nn_failures.csv'} for details."
             )
+
+    summary_path = write_shape_summary(shape_records, out_base / "nn_feature_shapes.csv")
+    print(f"[saved] {summary_path}")
 
 
 if __name__ == "__main__":

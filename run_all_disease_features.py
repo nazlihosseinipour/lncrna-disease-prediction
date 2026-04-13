@@ -15,6 +15,7 @@ import pandas as pd
 
 from mainfolder.features.disease_features import DiseaseFeatures
 from mainfolder.utils.loader import load_edges_child_parent, load_csv_df
+from mainfolder.utils.output_summary import add_shape_record, shape_from_result, write_shape_summary
 
 
 def load_disease_to_terms(path: Path, diseases_required: list[str]) -> dict[str, list[str]]:
@@ -55,6 +56,7 @@ def main():
 
     out_base = Path(args.outdir) / args.version_name / "disease"
     out_base.mkdir(parents=True, exist_ok=True)
+    shape_records = []
 
     # Load Y to get disease order (skip ID column if present)
     Y = load_csv_df(str(y_path))
@@ -81,6 +83,17 @@ def main():
     sim = df_mod.disease_similarity_bma(disease_to_terms=disease_to_terms, diseases_order=diseases)
     sim_path = out_base / "disease_similarity_bma.csv"
     sim.to_csv(sim_path)
+    sim_rows, sim_cols = shape_from_result(sim)
+    add_shape_record(
+        shape_records,
+        feature_group="disease",
+        feature_name="disease_similarity_bma",
+        method_id=14,
+        source_name=y_path.stem,
+        output_path=sim_path,
+        rows=sim_rows,
+        cols=sim_cols,
+    )
     print(f"[saved] {sim_path}")
 
     # 13: representative-term Wang matrix.
@@ -102,6 +115,17 @@ def main():
     sim13_df = pd.DataFrame(sim13_rows, index=diseases, columns=diseases)
     sim13_path = out_base / "term_similarity_wang.csv"
     sim13_df.to_csv(sim13_path)
+    sim13_rows_n, sim13_cols_n = shape_from_result(sim13_df)
+    add_shape_record(
+        shape_records,
+        feature_group="disease",
+        feature_name="term_similarity_wang",
+        method_id=13,
+        source_name=y_path.stem,
+        output_path=sim13_path,
+        rows=sim13_rows_n,
+        cols=sim13_cols_n,
+    )
     print(f"[saved] {sim13_path}")
 
     # 15: LFS from Y and disease similarity
@@ -112,7 +136,20 @@ def main():
     print(f"[info] LFS finished in {dt:.1f} seconds, saving...")
     lfs_path = out_base / "lfs_from_Y.csv"
     lfs.to_csv(lfs_path)
+    lfs_rows, lfs_cols = shape_from_result(lfs)
+    add_shape_record(
+        shape_records,
+        feature_group="disease",
+        feature_name="lfs_from_Y",
+        method_id=15,
+        source_name=y_path.stem,
+        output_path=lfs_path,
+        rows=lfs_rows,
+        cols=lfs_cols,
+    )
     print(f"[saved] {lfs_path}")
+    summary_path = write_shape_summary(shape_records, out_base / "disease_feature_shapes.csv")
+    print(f"[saved] {summary_path}")
     
 
 

@@ -21,6 +21,7 @@ from mainfolder.utils.loader import load_sequences_csv, preprocess_sequences
 from mainfolder.core.feature_extractor import FeatureExtractor
 from mainfolder.features.rna_features import RnaFeatures
 from mainfolder.utils.utils import ALPHABET, normalize_rna_dinuc_props
+from mainfolder.utils.output_summary import add_shape_record, shape_from_result, write_shape_summary
 
 
 def load_props_csv(path: str):
@@ -70,6 +71,13 @@ def main():
     p.add_argument("--outdir", required=True, help="Base folder to save outputs")
     p.add_argument("--version_name", required=True, help="Data version label (e.g., v1, v2)")
     p.add_argument("--k", type=int, default=3, help="k for k-mer based methods (1,2,8,9)")
+    p.add_argument(
+        "--k_values",
+        nargs="+",
+        type=int,
+        help="Optional list of k values for methods 1 and 2 (e.g. --k_values 1 2 3 4). "
+             "If omitted, the single --k value is used.",
+    )
     p.add_argument("--lam", type=int, default=2, help="lam for PseDNC (method 3)")
     p.add_argument("--weight", type=float, default=0.5, help="w for PseDNC (method 3)")
     p.add_argument("--L", type=int, default=3, help="lag for DAC/DCC/DACC (methods 4,5,6)")
@@ -86,12 +94,17 @@ def main():
     )
     args = p.parse_args()
     normalize_features = not args.no_normalize
+    k_values = args.k_values or [args.k]
+    bad_k = [k for k in k_values if k < 1]
+    if bad_k:
+        raise ValueError(f"All k values must be >= 1, got: {bad_k}")
 
     # place results under <outdir>/<version_name>/rna/
     base_out = Path(args.outdir) / args.version_name / "rna"
     base_out.mkdir(parents=True, exist_ok=True)
 
     props = load_props_csv(args.props_csv)
+    shape_records = []
 
     # method_id -> kwargs (props always provided so nothing is skipped)
     method_params = {
@@ -122,22 +135,58 @@ def main():
 
         stem = seqs_path.stem
         for mid, name in sorted(RnaFeatures.METHOD_MAP.items()):
-            kwargs = method_params.get(mid, {}).copy()
-            kwargs.update({"return_format": "dataframe", "sample_ids": ids2})
-            # Only pass normalize to methods that accept it
-            if mid in (1, 2, 7, 8, 9, 10, 11, 12):
-                kwargs["normalize"] = normalize_features
-            print(
-                f"[run] {args.version_name}/{stem} -> method {mid} ({name}) "
-                f"| normalize={normalize_features if mid in (1, 2, 7, 8, 9, 10, 11, 12) else 'n/a'}"
-            )
-            cols, df = FeatureExtractor.run("rna", mid, seqs2, **kwargs)
-            out_path = base_out / f"{stem}_{name}.csv"
-            if isinstance(df, pd.DataFrame):
-                df.to_csv(out_path, index=False)
+            run_specs = []
+            if mid in (1, 2):
+                for k in k_values:
+                    run_specs.append(
+                        {
+                            "feature_name": f"{name}_k{k}",
+                            "kwargs": {"k": k},
+                            "display_suffix": f", k={k}",
+                        }
+                    )
             else:
-                pd.DataFrame(df, columns=cols).to_csv(out_path, index=False)
-            print(f"[saved] {out_path}")
+                run_specs.append(
+                    {
+                        "feature_name": name,
+                        "kwargs": method_params.get(mid, {}).copy(),
+                        "display_suffix": "",
+                    }
+                )
+
+            for spec in run_specs:
+                kwargs = spec["kwargs"]
+                kwargs.update({"return_format": "dataframe", "sample_ids": ids2})
+                # Only pass normalize to methods that accept it
+                if mid in (1, 2, 7, 8, 9, 10, 11, 12):
+                    kwargs["normalize"] = normalize_features
+                print(
+                    f"[run] {args.version_name}/{stem} -> method {mid} ({spec['feature_name']}) "
+                    f"| normalize={normalize_features if mid in (1, 2, 7, 8, 9, 10, 11, 12) else 'n/a'}"
+                    f"{spec['display_suffix']}"
+                )
+                cols, df = FeatureExtractor.run("rna", mid, seqs2, **kwargs)
+                out_path = base_out / f"{stem}_{spec['feature_name']}.csv"
+                if isinstance(df, pd.DataFrame):
+                    df.to_csv(out_path, index=False)
+                    rows, ncols = shape_from_result(df)
+                else:
+                    pd.DataFrame(df, columns=cols).to_csv(out_path, index=False)
+                    rows, ncols = shape_from_result(df, cols)
+                add_shape_record(
+                    shape_records,
+                    feature_group="rna",
+                    feature_name=spec["feature_name"],
+                    method_id=mid,
+                    source_name=stem,
+                    output_path=out_path,
+                    rows=rows,
+                    cols=ncols,
+                )
+                print(f"[saved] {out_path}")
+
+    summary_path = write_shape_summary(shape_records, base_out / "rna_feature_shapes.csv")
+    print(f"[saved] {summary_path}")
 
 
 if __name__ == "__main__":

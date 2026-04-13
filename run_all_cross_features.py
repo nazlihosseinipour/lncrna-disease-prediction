@@ -14,6 +14,7 @@ import numpy as np
 
 from mainfolder.core.feature_extractor import FeatureExtractor
 from mainfolder.features.cross_features import CrossFeatures
+from mainfolder.utils.output_summary import add_shape_record, shape_from_result, write_shape_summary
 
 
 def load_matrix(csv_path: Path) -> pd.DataFrame:
@@ -52,6 +53,7 @@ def main():
 
     out_base = Path(args.outdir) / args.version_name / "cross"
     out_base.mkdir(parents=True, exist_ok=True)
+    shape_records = []
 
     # method_ids from CrossFeatures.METHOD_MAP
     method_ids = sorted(CrossFeatures.METHOD_MAP.keys())
@@ -68,16 +70,69 @@ def main():
             print(f"[run] {args.version_name}/{stem} -> method {mid} ({name})")
             if mid == 16:
                 gip_lnc, gip_dis = FeatureExtractor.run("cross", mid, matrix=M)
-                gip_lnc.to_csv(out_base / f"{stem}_gip_lncRNA.csv")
-                gip_dis.to_csv(out_base / f"{stem}_gip_disease.csv")
-                print(f"[saved] {out_base / f'{stem}_gip_lncRNA.csv'}")
-                print(f"[saved] {out_base / f'{stem}_gip_disease.csv'}")
+                lnc_path = out_base / f"{stem}_gip_lncRNA.csv"
+                dis_path = out_base / f"{stem}_gip_disease.csv"
+                gip_lnc.to_csv(lnc_path)
+                gip_dis.to_csv(dis_path)
+                lnc_rows, lnc_cols = shape_from_result(gip_lnc)
+                dis_rows, dis_cols = shape_from_result(gip_dis)
+                add_shape_record(
+                    shape_records,
+                    feature_group="cross",
+                    feature_name="gip_lncRNA",
+                    method_id=mid,
+                    source_name=stem,
+                    output_path=lnc_path,
+                    rows=lnc_rows,
+                    cols=lnc_cols,
+                )
+                add_shape_record(
+                    shape_records,
+                    feature_group="cross",
+                    feature_name="gip_disease",
+                    method_id=mid,
+                    source_name=stem,
+                    output_path=dis_path,
+                    rows=dis_rows,
+                    cols=dis_cols,
+                )
+                print(f"[saved] {lnc_path}")
+                print(f"[saved] {dis_path}")
             elif mid == 17:
                 lnc_feat, dis_feat = FeatureExtractor.run("cross", mid, matrix=M, k=args.k)
-                pd.DataFrame(lnc_feat).to_csv(out_base / f"{stem}_svd_lncRNA.csv", index=False)
-                pd.DataFrame(dis_feat).to_csv(out_base / f"{stem}_svd_disease.csv", index=False)
-                print(f"[saved] {out_base / f'{stem}_svd_lncRNA.csv'}")
-                print(f"[saved] {out_base / f'{stem}_svd_disease.csv'}")
+                lnc_df = pd.DataFrame(lnc_feat)
+                dis_df = pd.DataFrame(dis_feat)
+                lnc_path = out_base / f"{stem}_svd_lncRNA.csv"
+                dis_path = out_base / f"{stem}_svd_disease.csv"
+                lnc_df.to_csv(lnc_path, index=False)
+                dis_df.to_csv(dis_path, index=False)
+                lnc_rows, lnc_cols = shape_from_result(lnc_df)
+                dis_rows, dis_cols = shape_from_result(dis_df)
+                add_shape_record(
+                    shape_records,
+                    feature_group="cross",
+                    feature_name="svd_lncRNA",
+                    method_id=mid,
+                    source_name=stem,
+                    output_path=lnc_path,
+                    rows=lnc_rows,
+                    cols=lnc_cols,
+                )
+                add_shape_record(
+                    shape_records,
+                    feature_group="cross",
+                    feature_name="svd_disease",
+                    method_id=mid,
+                    source_name=stem,
+                    output_path=dis_path,
+                    rows=dis_rows,
+                    cols=dis_cols,
+                )
+                print(f"[saved] {lnc_path}")
+                print(f"[saved] {dis_path}")
+
+    summary_path = write_shape_summary(shape_records, out_base / "cross_feature_shapes.csv")
+    print(f"[saved] {summary_path}")
 
 
 if __name__ == "__main__":
