@@ -9,7 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-import run_all_nn_features as runner
+import pipelines.run_all_nn_features as runner
 
 
 def test_nn_runner_continues_after_method_failure(monkeypatch, tmp_path):

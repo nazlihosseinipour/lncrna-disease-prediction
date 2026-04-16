@@ -1,3 +1,6 @@
 .venv/
 Data/output_data
 final_output
+Data/conversion-table
+Data/raw/NONCODEv6_human.fa
+Data/raw/lncipedia_5_2_hc.fasta

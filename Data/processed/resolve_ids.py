@@ -70,6 +70,7 @@ from mainfolder.utils.sequence_overrides import OVERRIDE_COLUMNS, ensure_sequenc
 
 RNACENTRAL_EXTERNAL_ID = "https://rnacentral.org/api/v1/rna/"
 ENSEMBL_XREF_SYMBOL = "https://rest.ensembl.org/xrefs/symbol/homo_sapiens/{value}"
+ENSEMBL_XREF_NAME = "https://rest.ensembl.org/xrefs/name/homo_sapiens/{value}"
 ENSEMBL_LOOKUP_ID = "https://rest.ensembl.org/lookup/id/{value}"
 ENSEMBL_SEQUENCE_ID = "https://rest.ensembl.org/sequence/id/{value}"
 ENSEMBL_ARCHIVE_POST = "https://rest.ensembl.org/archive/id"
@@ -82,21 +83,24 @@ NCBI_EFETCH = (
 )
 NCBI_GENE_ESEARCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 NCBI_GENE_ESUMMARY = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+NCBI_GENE_ELINK = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi"
+NCBI_NUCCORE_ESUMMARY = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
 
 RETRY_STATUSES = [429, 500, 502, 503, 504]
 VALID_NUCLEOTIDE_CHARS = set("ACGTUNRYSWKMBDHVX")
 RNACENTRAL_ID_RE = re.compile(r"^NON(?:HSAT|MMUT)\d+(?:\.\d+)?$", re.I)
 FANTOM_ID_RE = re.compile(r"^fantom(?:3|5)_[A-Za-z0-9._-]+$", re.I)
+CIRCRNA_ID_RE = re.compile(r"^(?:hsa_)?circ[_-][A-Za-z0-9._-]+$", re.I)
 LNCIPEDIA_ID_RE = re.compile(r"^(?:LNC[-_].+|LNCV.+|lnc[-_].+|Lnc[-_].+|lnr.+)$")
 ASSEMBLER_ID_RE = re.compile(r"^(?:TCONS?[_A-Za-z0-9.-]+|XLOC[_A-Za-z0-9.-]+)$", re.I)
 LOC_SYMBOL_RE = re.compile(r"^LOC\d+(?:[._:-].+)?$", re.I)
 ENSEMBL_CLONE_RE = re.compile(
-    r"^(?:(?:AC|AL)\d{5,6}|RP\d+-[A-Za-z0-9]+)(?:\.\d+)?(?:[-:]\d+)?$",
+    r"^(?:(?:AC|AL)\d{5,6}|RP\d+-[A-Za-z0-9]+|(?:CTD|CTB|CTC|CTA|CITF)-[A-Za-z0-9]+)(?:\.\d+)?(?:[-:]\d+)?$",
     re.I,
 )
 ENSEMBL_ARCHIVE_RE = re.compile(r"^(?:ENSG|ENST)\d+(?:\.\d+)?$", re.I)
 NCBI_ACCESSION_RE = re.compile(r"^(?:AJ|AP|AF)\d+(?:\.\d+)?(?:[-:]\d+)?$", re.I)
-UCSC_RE = re.compile(r"^uc\d{3}[a-z]{3}(?:\.\d+)?$", re.I)
+UCSC_RE = re.compile(r"^(?:uc\d{3}[a-z]{3}(?:\.\d+)?|uc\.\d+(?:[+-])?)$", re.I)
 REFSEQ_RNA_RE = re.compile(r"\b(?:NR|NM|XR|XM)_\d+(?:\.\d+)?\b", re.I)
 ENSEMBL_STABLE_RE = re.compile(r"\bENS(?:G|T)\d+(?:\.\d+)?\b", re.I)
 VERSIONED_ENS_RE = re.compile(r"^(ENS(?:G|T)\d+)\.\d+$", re.I)
@@ -105,6 +109,14 @@ TRAILING_TRANSCRIPT_SUFFIX_RE = re.compile(r"^(.+?)(?:-\d{3,}|:\d+)$")
 TRAILING_VERSION_RE = re.compile(r"^(.+?)\.\d+$")
 TRAILING_NUMERIC_SUFFIX_RE = re.compile(r"^(.+?)-\d+$")
 TRAILING_LOWERCASE_RE = re.compile(r"^(.+?)[a-z]$")
+UNICODE_DASH_TRANSLATION = str.maketrans(
+    {
+        "\u2010": "-",
+        "\u2011": "-",
+        "\u2012": "-",
+        "\u2013": "-",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -259,8 +271,30 @@ def load_tab_mapping(path: Path | None, key_column: str, value_column: str) -> d
     return mapping
 
 
+def normalize_lookup_id(raw_id: str) -> str:
+    return str(raw_id or "").strip().translate(UNICODE_DASH_TRANSLATION)
+
+
+def ensembl_lookup_variants(raw_id: str) -> list[str]:
+    value = normalize_lookup_id(raw_id)
+    variants = [value]
+    compact = re.sub(r"\s+", "", value)
+    if compact and compact not in variants:
+        variants.append(compact)
+    collapsed_underscore = re.sub(r"_+", "_", compact)
+    if collapsed_underscore and collapsed_underscore not in variants:
+        variants.append(collapsed_underscore)
+    underscore_to_dash = collapsed_underscore.replace("_", "-")
+    if underscore_to_dash and underscore_to_dash not in variants:
+        variants.append(underscore_to_dash)
+    no_underscore = collapsed_underscore.replace("_", "")
+    if no_underscore and no_underscore not in variants:
+        variants.append(no_underscore)
+    return variants
+
+
 def build_variants(raw_id: str) -> list[str]:
-    value = str(raw_id or "").strip()
+    value = normalize_lookup_id(raw_id)
     variants = [value]
     current = value
     for pattern in (
@@ -281,7 +315,7 @@ def build_variants(raw_id: str) -> list[str]:
 
 
 def lncipedia_conversion_variants(raw_id: str) -> list[str]:
-    value = str(raw_id or "").strip()
+    value = normalize_lookup_id(raw_id)
     variants = [value]
 
     lowered_lnc = re.sub(r"^(?:LNC|Lnc|lnc)-", "lnc-", value)
@@ -305,11 +339,13 @@ def lncipedia_conversion_variants(raw_id: str) -> list[str]:
 
 
 def classify(raw_id: str) -> str:
-    value = str(raw_id or "").strip()
+    value = normalize_lookup_id(raw_id)
     if RNACENTRAL_ID_RE.match(value):
         return "rnacentral_noncode"
     if FANTOM_ID_RE.match(value):
         return "rnacentral_external"
+    if CIRCRNA_ID_RE.match(value):
+        return "circrna_external"
     if LNCIPEDIA_ID_RE.match(value):
         return "lncipedia_local"
     if ASSEMBLER_ID_RE.match(value):
@@ -332,6 +368,7 @@ def print_classification_summary(rows: list[dict[str, str]]) -> None:
     labels = {
         "rnacentral_noncode": "RNAcentral NONCODE",
         "rnacentral_external": "RNAcentral external ID",
+        "circrna_external": "circRNA external ID",
         "lncipedia_local": "LNCipedia local FASTA",
         "assembler_id": "Assembler-only ID",
         "loc_symbol": "NCBI LOC symbol",
@@ -348,6 +385,7 @@ def print_classification_summary(rows: list[dict[str, str]]) -> None:
     for route in (
         "rnacentral_noncode",
         "rnacentral_external",
+        "circrna_external",
         "lncipedia_local",
         "assembler_id",
         "loc_symbol",
@@ -374,6 +412,32 @@ def first_doc_list(data: Any) -> list[dict[str, Any]]:
                 return [item for item in value["docs"] if isinstance(item, dict)]
         return [data]
     return []
+
+
+def extract_elink_ids(data: Any) -> list[str]:
+    linked_ids: list[str] = []
+    if not isinstance(data, dict):
+        return linked_ids
+    linksets = data.get("linksets")
+    if not isinstance(linksets, list):
+        return linked_ids
+    for linkset in linksets:
+        if not isinstance(linkset, dict):
+            continue
+        linksetdbs = linkset.get("linksetdbs")
+        if not isinstance(linksetdbs, list):
+            continue
+        for linksetdb in linksetdbs:
+            if not isinstance(linksetdb, dict):
+                continue
+            links = linksetdb.get("links")
+            if not isinstance(links, list):
+                continue
+            for value in links:
+                clean = str(value).strip()
+                if clean and clean not in linked_ids:
+                    linked_ids.append(clean)
+    return linked_ids
 
 
 def get_json(
@@ -495,6 +559,36 @@ def fetch_ensembl_from_stable_id(
     return seq, transcript_id, "ensembl_transcript"
 
 
+def resolve_ensembl_xref_to_stable(
+    candidate: str,
+    session: requests.Session,
+    *,
+    error_log: Path,
+) -> str:
+    for normalized in ensembl_lookup_variants(candidate):
+        for url in (
+            ENSEMBL_XREF_SYMBOL.format(value=quote(normalized)),
+            ENSEMBL_XREF_NAME.format(value=quote(normalized)),
+        ):
+            data = get_json(
+                session,
+                url,
+                error_log=error_log,
+                headers={"Accept": "application/json"},
+            )
+            docs = first_doc_list(data)
+            if not docs:
+                continue
+            for doc in docs:
+                ens_id = str(doc.get("id") or "").strip()
+                if ens_id.startswith(("ENSG", "ENST")):
+                    return ens_id
+            fallback = str(docs[0].get("id") or "").strip()
+            if fallback:
+                return fallback
+    return ""
+
+
 def resolve_hgnc_symbol_to_gene(
     candidate: str,
     session: requests.Session,
@@ -528,20 +622,7 @@ def resolve_clone_symbol_to_ensembl(
     *,
     error_log: Path,
 ) -> str:
-    data = get_json(
-        session,
-        ENSEMBL_XREF_SYMBOL.format(value=quote(candidate)),
-        error_log=error_log,
-        headers={"Accept": "application/json"},
-    )
-    docs = first_doc_list(data)
-    if not docs:
-        return ""
-    for doc in docs:
-        ens_id = str(doc.get("id") or "").strip()
-        if ens_id.startswith(("ENSG", "ENST")):
-            return ens_id
-    return str(docs[0].get("id") or "").strip()
+    return resolve_ensembl_xref_to_stable(candidate, session, error_log=error_log)
 
 
 def fetch_ncbi_accession(
@@ -594,6 +675,55 @@ def extract_loc_refseq_rna_ids_from_blob(blob: Any) -> list[str]:
     return candidates
 
 
+def fetch_linked_refseq_rna_accessions(
+    gene_ids: list[str],
+    session: requests.Session,
+    *,
+    error_log: Path,
+) -> list[str]:
+    accessions: list[str] = []
+    for gene_id in gene_ids:
+        linked_nuccore_ids: list[str] = []
+        for linkname in ("gene_nuccore_refseqrna", "gene_nuccore"):
+            link_data = get_json(
+                session,
+                NCBI_GENE_ELINK,
+                error_log=error_log,
+                params={
+                    "dbfrom": "gene",
+                    "db": "nuccore",
+                    "id": gene_id,
+                    "linkname": linkname,
+                    "retmode": "json",
+                },
+                headers={"Accept": "application/json"},
+            )
+            for linked_id in extract_elink_ids(link_data):
+                if linked_id not in linked_nuccore_ids:
+                    linked_nuccore_ids.append(linked_id)
+        if not linked_nuccore_ids:
+            continue
+
+        summary_data = get_json(
+            session,
+            NCBI_NUCCORE_ESUMMARY,
+            error_log=error_log,
+            params={"db": "nuccore", "id": ",".join(linked_nuccore_ids), "retmode": "json"},
+            headers={"Accept": "application/json"},
+        )
+        if not isinstance(summary_data, dict):
+            continue
+        summary_result = summary_data.get("result", {}) if isinstance(summary_data.get("result"), dict) else {}
+        for linked_id in linked_nuccore_ids:
+            doc = summary_result.get(linked_id)
+            if not isinstance(doc, dict):
+                continue
+            for accession in extract_loc_refseq_rna_ids_from_blob(doc):
+                if accession not in accessions:
+                    accessions.append(accession)
+    return accessions
+
+
 def ucsc_candidate_ids(row: dict[str, Any]) -> tuple[list[str], list[str], list[str]]:
     text_blob = json.dumps(row, sort_keys=True)
     ensembl_ids = []
@@ -606,7 +736,7 @@ def ucsc_candidate_ids(row: dict[str, Any]) -> tuple[list[str], list[str], list[
         if match not in refseq_ids:
             refseq_ids.append(match)
     symbols: list[str] = []
-    for key in ("geneName2", "name2", "gene_name", "symbol"):
+    for key in ("geneName2", "name2", "gene_name", "symbol", "geneSymbol", "gene", "geneName", "name"):
         value = str(row.get(key) or "").strip()
         if value and value not in symbols:
             symbols.append(value)
@@ -625,12 +755,12 @@ def resolve_ucsc_rows(
             session,
             UCSC_TRACK,
             error_log=error_log,
-            params={"genome": genome, "track": "knownGene", "name": candidate},
+            params={"genome": genome, "track": "kgXref", "name": candidate},
             headers={"Accept": "application/json"},
         )
         if not isinstance(data, dict):
             continue
-        value = data.get("knownGene")
+        value = data.get("kgXref")
         if isinstance(value, list):
             rows.extend(item for item in value if isinstance(item, dict))
         elif isinstance(value, dict):
@@ -730,6 +860,34 @@ def resolve_rnacentral_external(
                     resolved_id_type="rnacentral_external",
                     sequence=seq,
                     source="rnacentral",
+                    confidence=confidence_for_match(raw_id, candidate),
+                ),
+                "",
+            )
+        attempted.append(f"{candidate}:rnacentral_empty")
+    return None, "; ".join(attempted) if attempted else "rnacentral_empty"
+
+
+def resolve_circrna_external(
+    raw_id: str,
+    variants: list[str],
+    *,
+    session: requests.Session,
+    error_log: Path,
+) -> tuple[SequenceHit | None, str]:
+    attempted: list[str] = []
+    for candidate in variants:
+        seq, resolved_id = rnacentral_sequence_from_candidate(candidate, session, error_log=error_log)
+        if seq:
+            return (
+                SequenceHit(
+                    query_id=raw_id,
+                    matched_query=candidate,
+                    route="circrna_external",
+                    resolved_id=resolved_id,
+                    resolved_id_type="rnacentral_external",
+                    sequence=seq,
+                    source="rnacentral_circrna",
                     confidence=confidence_for_match(raw_id, candidate),
                 ),
                 "",
@@ -1010,6 +1168,9 @@ def resolve_loc_symbol(
             for accession in extract_loc_refseq_rna_ids_from_blob(doc):
                 if accession not in refseq_rna_ids:
                     refseq_rna_ids.append(accession)
+        for accession in fetch_linked_refseq_rna_accessions(gene_ids, session, error_log=error_log):
+            if accession not in refseq_rna_ids:
+                refseq_rna_ids.append(accession)
 
         for stable_id in ensembl_ids:
             seq, transcript_id, resolved_type = fetch_ensembl_from_stable_id(stable_id, session, error_log=error_log)
@@ -1068,10 +1229,31 @@ def resolve_hgnc_symbol(
     attempted: list[str] = []
     for candidate in variants:
         gene_id, _symbol = resolve_hgnc_symbol_to_gene(candidate, session, error_log=error_log)
-        if not gene_id:
-            attempted.append(f"{candidate}:hgnc_symbol_empty")
+        if gene_id:
+            seq, transcript_id, resolved_type = fetch_ensembl_from_stable_id(gene_id, session, error_log=error_log)
+            if seq:
+                return (
+                    SequenceHit(
+                        query_id=raw_id,
+                        matched_query=candidate,
+                        route=route,
+                        resolved_id=transcript_id,
+                        resolved_id_type=resolved_type,
+                        sequence=seq,
+                        source=source,
+                        confidence=confidence_for_match(raw_id, candidate),
+                    ),
+                    "",
+                )
+            attempted.append(f"{candidate}:ensembl_cdna_empty")
             continue
-        seq, transcript_id, resolved_type = fetch_ensembl_from_stable_id(gene_id, session, error_log=error_log)
+
+        attempted.append(f"{candidate}:hgnc_symbol_empty")
+        stable_id = resolve_ensembl_xref_to_stable(candidate, session, error_log=error_log)
+        if not stable_id:
+            attempted.append(f"{candidate}:ensembl_name_empty")
+            continue
+        seq, transcript_id, resolved_type = fetch_ensembl_from_stable_id(stable_id, session, error_log=error_log)
         if seq:
             return (
                 SequenceHit(
@@ -1081,12 +1263,12 @@ def resolve_hgnc_symbol(
                     resolved_id=transcript_id,
                     resolved_id_type=resolved_type,
                     sequence=seq,
-                    source=source,
+                    source="ensembl_name_cdna",
                     confidence=confidence_for_match(raw_id, candidate),
                 ),
                 "",
             )
-        attempted.append(f"{candidate}:ensembl_cdna_empty")
+        attempted.append(f"{candidate}:ensembl_name_cdna_empty")
     return None, "; ".join(attempted) if attempted else "hgnc_symbol_empty"
 
 
@@ -1165,13 +1347,16 @@ def resolve_one(
 ) -> tuple[SequenceHit | None, ResidualHit]:
     raw_id = str(row.get("id") or "").strip()
     id_type = str(row.get("type") or "").strip()
-    route = classify(raw_id)
-    variants = build_variants(raw_id)
+    normalized_lookup_id = normalize_lookup_id(raw_id)
+    route = classify(normalized_lookup_id)
+    variants = build_variants(normalized_lookup_id)
 
     if route == "rnacentral_noncode":
         hit, reason = resolve_noncode(raw_id, variants, session=session, error_log=error_log, noncode_index=noncode_index)
     elif route == "rnacentral_external":
         hit, reason = resolve_rnacentral_external(raw_id, variants, session=session, error_log=error_log)
+    elif route == "circrna_external":
+        hit, reason = resolve_circrna_external(raw_id, variants, session=session, error_log=error_log)
     elif route == "lncipedia_local":
         hit, reason = resolve_lncipedia(
             raw_id,

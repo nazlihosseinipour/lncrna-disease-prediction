@@ -112,7 +112,11 @@ def parse_do_obo(obo_path: Path):
     flush_term(current)
 
     terms_df = pd.DataFrame(terms).drop_duplicates(subset=["doid"])
+    name_by_doid = terms_df.set_index("doid")["name"].to_dict()
     edges_df = pd.DataFrame(edges).drop_duplicates()
+    if not edges_df.empty:
+        edges_df["child_name"] = edges_df["child"].map(name_by_doid).fillna(edges_df["child"])
+        edges_df["parent_name"] = edges_df["parent"].map(name_by_doid).fillna(edges_df["parent"])
     return terms_df, edges_df
 
 
