@@ -18,6 +18,46 @@ from mainfolder.utils.loader import load_edges_child_parent, load_csv_df
 from mainfolder.utils.output_summary import add_shape_record, shape_from_result, write_shape_summary
 
 
+def load_disease_matrix(path: Path) -> tuple[pd.DataFrame, list[str]]:
+    """
+    Load a disease matrix and normalize common full-table variants.
+
+    Accepts both:
+    - disease-only matrices (ID already in the index)
+    - sequences-style full tables with columns like ID, seqs, disease...
+    """
+    Y = load_csv_df(str(path)).copy()
+    if Y.empty:
+        raise ValueError(f"{path} is empty.")
+
+    cols_lookup = {str(col).strip().lower(): str(col) for col in Y.columns}
+
+    id_col = None
+    for candidate in ("id", "lnc_id", "ncrna symbol"):
+        if candidate in cols_lookup:
+            id_col = cols_lookup[candidate]
+            break
+    if id_col is not None:
+        Y = Y.set_index(id_col)
+
+    drop_cols = []
+    for candidate in ("seq", "seqs"):
+        col = cols_lookup.get(candidate)
+        if col is not None and col in Y.columns:
+            drop_cols.append(col)
+    if drop_cols:
+        Y = Y.drop(columns=sorted(set(drop_cols)))
+
+    if Y.shape[1] == 0:
+        raise ValueError(
+            f"{path} has no disease columns after dropping ID/sequence columns."
+        )
+
+    Y = Y.apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    diseases = list(map(str, Y.columns))
+    return Y, diseases
+
+
 def load_disease_to_terms(path: Path, diseases_required: list[str]) -> dict[str, list[str]]:
     df = pd.read_csv(path, dtype=str)
     cols = [c.strip().lower() for c in df.columns]
@@ -58,11 +98,8 @@ def main():
     out_base.mkdir(parents=True, exist_ok=True)
     shape_records = []
 
-    # Load Y to get disease order (skip ID column if present)
-    Y = load_csv_df(str(y_path))
-    diseases = list(Y.columns)
-    if diseases and diseases[0].lower() in ("id", "lnc_id", "ncRNA Symbol".lower()):
-        diseases = diseases[1:]
+    # Load Y and normalize sequences-style full matrices if needed.
+    Y, diseases = load_disease_matrix(y_path)
 
     edges = load_edges_child_parent(str(edges_path))
     disease_to_terms = load_disease_to_terms(disease_terms_path, diseases_required=diseases)

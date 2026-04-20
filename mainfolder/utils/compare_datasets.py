@@ -18,7 +18,7 @@ from typing import Iterable
 import pandas as pd
 
 
-DEFAULT_V1_MATRIX = Path("Data/raw/sequences.csv")
+DEFAULT_V1_MATRIX = Path("Data/output_data/sequences_for_oop.csv")
 DEFAULT_V2_MATRIX = Path("Data/output_data/website_full_matrix.csv")
 DEFAULT_FEATURE_BASE = Path("final_output")
 DEFAULT_REPORT_DIR = Path("Data/output_data/comparison_reports")
