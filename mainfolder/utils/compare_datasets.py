@@ -23,6 +23,10 @@ DEFAULT_V2_MATRIX = Path("Data/output_data/website_full_matrix.csv")
 DEFAULT_FEATURE_BASE = Path("final_output")
 DEFAULT_REPORT_DIR = Path("Data/output_data/comparison_reports")
 
+VERSION_DIR_CANDIDATES = {
+    "v1": ("v1", "V1"),
+    "v2": ("v2", "V2"),
+}
 ID_CANDIDATES = ("ID", "id", "lnc_id", "ncRNA Symbol")
 SEQ_CANDIDATES = ("seq", "seqs")
 DOMAIN_DIR_CANDIDATES = {
@@ -46,6 +50,11 @@ def csv_shape(path: Path) -> str:
         return f"{len(df)}x{len(df.columns)}"
     except Exception as exc:
         return f"error: {exc}"
+
+
+def raw_csv_shape(path: Path) -> tuple[int, int]:
+    df = pd.read_csv(path)
+    return int(len(df)), int(len(df.columns))
 
 
 def _normalized_lookup(columns: Iterable[str]) -> dict[str, str]:
@@ -120,6 +129,25 @@ def dataset_stats(df: pd.DataFrame) -> dict[str, float | int]:
         "avg_pos_per_col_disease": avg_pos_per_col_disease,
         "label_density": density,
     }
+
+
+def original_input_summary(v1_matrix_path: Path, v2_matrix_path: Path) -> pd.DataFrame:
+    rows: list[dict[str, object]] = []
+    for version, path in (("v1", v1_matrix_path), ("v2", v2_matrix_path)):
+        raw_rows, raw_cols = raw_csv_shape(path)
+        normalized = load_matrix(path)
+        stats = dataset_stats(normalized)
+        rows.append(
+            {
+                "version": version,
+                "matrix_path": str(path),
+                "raw_csv_rows": raw_rows,
+                "raw_csv_cols": raw_cols,
+                "normalized_rows": int(stats["num_sequences"]),
+                "normalized_disease_cols": int(stats["num_diseases"]),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def matrix_version_summary(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
@@ -210,12 +238,47 @@ def compare_matrix_changes(df1: pd.DataFrame, df2: pd.DataFrame) -> tuple[pd.Dat
     return summary, disease_rank, new_diseases_df, dropped_diseases_df
 
 
+def _resolve_version_dir(base: Path, version: str) -> Path | None:
+    for candidate in VERSION_DIR_CANDIDATES.get(version, (version,)):
+        p = base / candidate
+        if p.exists():
+            return p
+    return None
+
+
 def _resolve_domain_dir(base: Path, version: str, domain: str) -> Path | None:
-    version_root = base / version
+    version_root = _resolve_version_dir(base, version)
+    if version_root is None:
+        return None
     for candidate in DOMAIN_DIR_CANDIDATES[domain]:
         p = version_root / candidate
         if p.exists():
             return p
+    return None
+
+
+def _resolve_output_file(
+    *,
+    base: Path,
+    version: str,
+    domain: str,
+    output_path: str,
+) -> Path | None:
+    candidate = Path(output_path)
+    if candidate.is_absolute() and candidate.exists():
+        return candidate
+
+    domain_dir = _resolve_domain_dir(base, version, domain)
+    if domain_dir is not None:
+        basename_candidate = domain_dir / candidate.name
+        if basename_candidate.exists():
+            return basename_candidate
+
+    if not candidate.is_absolute():
+        repo_candidate = Path.cwd() / candidate
+        if repo_candidate.exists():
+            return repo_candidate
+
     return None
 
 
@@ -297,6 +360,169 @@ def compare_shape_summaries(base: Path) -> pd.DataFrame:
     return pd.concat(rows, ignore_index=True)
 
 
+def _expected_feature_shape(
+    *,
+    domain: str,
+    feature_name: str,
+    method_id: int | None,
+    n_sequences: int,
+    n_diseases: int,
+) -> tuple[int | None, int | None, str]:
+    feature_key = str(feature_name).strip().lower()
+
+    if domain == "rna":
+        return n_sequences, None, "RNA features should keep one row per sequence; feature width is method-specific."
+
+    if domain == "nn":
+        if int(method_id or -1) == 101 or feature_key == "mp_tokens":
+            return None, None, "Token-level output; compare unique sample_id count to input sequence count."
+        return n_sequences, None, "Sequence-level NN embeddings should keep one row per sequence."
+
+    if domain == "cross":
+        if "gip_lnc" in feature_key:
+            return n_sequences, n_sequences, "lncRNA GIP kernel should be square over sequences."
+        if "gip_disease" in feature_key:
+            return n_diseases, n_diseases, "Disease GIP kernel should be square over diseases."
+        if "svd_lnc" in feature_key:
+            return n_sequences, None, "SVD lncRNA embedding should keep one row per sequence; embedding width is method-specific."
+        if "svd_disease" in feature_key:
+            return n_diseases, None, "SVD disease embedding should keep one row per disease; embedding width is method-specific."
+
+    if domain == "disease":
+        if "term_similarity_wang" in feature_key or "disease_similarity_bma" in feature_key:
+            return n_diseases, n_diseases, "Disease similarity matrices should be square over diseases."
+        if "lfs_from_y" in feature_key:
+            return n_sequences, n_sequences, "LFS should be square over sequences."
+
+    return None, None, "No sanity rule defined for this output."
+
+
+def _safe_bool_match(observed: int | None, expected: int | None) -> str:
+    if expected is None:
+        return "not_checked"
+    if observed is None:
+        return "missing"
+    return "ok" if int(observed) == int(expected) else "mismatch"
+
+
+def _token_sample_count(
+    *,
+    base: Path,
+    version: str,
+    domain: str,
+    output_path: str,
+) -> int | None:
+    resolved = _resolve_output_file(base=base, version=version, domain=domain, output_path=output_path)
+    if resolved is None or not resolved.exists():
+        return None
+    df = pd.read_csv(resolved, usecols=["sample_id"])
+    return int(df["sample_id"].astype(str).nunique())
+
+
+def build_feature_sanity_report(
+    *,
+    v1_matrix_path: Path,
+    v2_matrix_path: Path,
+    feature_base: Path,
+) -> pd.DataFrame:
+    frames: list[pd.DataFrame] = []
+    version_meta = {
+        "v1": load_matrix(v1_matrix_path),
+        "v2": load_matrix(v2_matrix_path),
+    }
+
+    for version, matrix_df in version_meta.items():
+        n_sequences = int(len(matrix_df))
+        n_diseases = int(len([c for c in matrix_df.columns if c != "ID"]))
+
+        for domain in DOMAINS:
+            domain_dir = _resolve_domain_dir(feature_base, version, domain)
+            if domain_dir is None:
+                continue
+            summary_path = domain_dir / DOMAIN_SUMMARY_FILES[domain]
+            if not summary_path.exists():
+                continue
+
+            summary_df = pd.read_csv(summary_path).fillna("")
+            if summary_df.empty:
+                continue
+
+            rows: list[dict[str, object]] = []
+            for record in summary_df.to_dict("records"):
+                method_id_raw = record.get("method_id", "")
+                method_id = int(method_id_raw) if str(method_id_raw).strip() else None
+                expected_rows, expected_cols, note = _expected_feature_shape(
+                    domain=domain,
+                    feature_name=str(record.get("feature_name", "")),
+                    method_id=method_id,
+                    n_sequences=n_sequences,
+                    n_diseases=n_diseases,
+                )
+                output_rows = int(record.get("rows", 0) or 0)
+                output_cols = int(record.get("cols", 0) or 0)
+
+                sample_count = None
+                sample_status = "not_checked"
+                if domain == "nn" and method_id == 101:
+                    sample_count = _token_sample_count(
+                        base=feature_base,
+                        version=version,
+                        domain=domain,
+                        output_path=str(record.get("output_path", "")),
+                    )
+                    sample_status = _safe_bool_match(sample_count, n_sequences)
+
+                rows.append(
+                    {
+                        "version": version,
+                        "domain": domain,
+                        "feature_group": str(record.get("feature_group", "")),
+                        "feature_name": str(record.get("feature_name", "")),
+                        "method_id": method_id,
+                        "source_name": str(record.get("source_name", "")),
+                        "original_sequence_rows": n_sequences,
+                        "original_disease_cols": n_diseases,
+                        "output_rows": output_rows,
+                        "output_cols": output_cols,
+                        "expected_rows": expected_rows,
+                        "expected_cols": expected_cols,
+                        "row_status": _safe_bool_match(output_rows, expected_rows),
+                        "col_status": _safe_bool_match(output_cols, expected_cols),
+                        "observed_unique_samples": sample_count,
+                        "sample_status": sample_status,
+                        "output_path": str(record.get("output_path", "")),
+                        "sanity_note": note,
+                    }
+                )
+
+            frames.append(pd.DataFrame(rows))
+
+    if not frames:
+        return pd.DataFrame(
+            columns=[
+                "version",
+                "domain",
+                "feature_group",
+                "feature_name",
+                "method_id",
+                "source_name",
+                "original_sequence_rows",
+                "original_disease_cols",
+                "output_rows",
+                "output_cols",
+                "expected_rows",
+                "expected_cols",
+                "row_status",
+                "col_status",
+                "observed_unique_samples",
+                "sample_status",
+                "output_path",
+                "sanity_note",
+            ]
+        )
+    return pd.concat(frames, ignore_index=True)
+
+
 def write_reports(
     *,
     v1_matrix_path: Path,
@@ -311,10 +537,17 @@ def write_reports(
 
     version_summary = matrix_version_summary(df1, df2)
     matrix_change_summary, disease_rank, new_diseases_df, dropped_diseases_df = compare_matrix_changes(df1, df2)
+    original_summary = original_input_summary(v1_matrix_path, v2_matrix_path)
     feature_file_comparison = compare_feature_files(feature_base)
     shape_summary_comparison = compare_shape_summaries(feature_base)
+    feature_sanity_report = build_feature_sanity_report(
+        v1_matrix_path=v1_matrix_path,
+        v2_matrix_path=v2_matrix_path,
+        feature_base=feature_base,
+    )
 
     outputs = {
+        "original_input_shape_summary": report_dir / "original_input_shape_summary.csv",
         "matrix_version_summary": report_dir / "matrix_version_summary.csv",
         "matrix_change_summary": report_dir / "matrix_change_summary.csv",
         "disease_change_ranking": report_dir / "disease_change_ranking.csv",
@@ -322,8 +555,10 @@ def write_reports(
         "dropped_diseases_from_v1": report_dir / "dropped_diseases_from_v1.csv",
         "feature_file_shape_comparison": report_dir / "feature_file_shape_comparison.csv",
         "feature_shape_summary_comparison": report_dir / "feature_shape_summary_comparison.csv",
+        "feature_sanity_check": report_dir / "feature_sanity_check.csv",
     }
 
+    original_summary.to_csv(outputs["original_input_shape_summary"], index=False)
     version_summary.to_csv(outputs["matrix_version_summary"], index=False)
     matrix_change_summary.to_csv(outputs["matrix_change_summary"], index=False)
     disease_rank.to_csv(outputs["disease_change_ranking"], index=False)
@@ -331,6 +566,7 @@ def write_reports(
     dropped_diseases_df.to_csv(outputs["dropped_diseases_from_v1"], index=False)
     feature_file_comparison.to_csv(outputs["feature_file_shape_comparison"], index=False)
     shape_summary_comparison.to_csv(outputs["feature_shape_summary_comparison"], index=False)
+    feature_sanity_report.to_csv(outputs["feature_sanity_check"], index=False)
     return outputs
 
 
@@ -363,6 +599,7 @@ def main(argv: list[str] | None = None) -> None:
     version_summary = pd.read_csv(outputs["matrix_version_summary"])
     matrix_change_summary = pd.read_csv(outputs["matrix_change_summary"])
     disease_rank = pd.read_csv(outputs["disease_change_ranking"])
+    feature_sanity = pd.read_csv(outputs["feature_sanity_check"])
     summary_row = matrix_change_summary.iloc[0]
 
     print("\n=== Matrix Version Summary ===")
@@ -395,6 +632,18 @@ def main(argv: list[str] | None = None) -> None:
     print("\nSaved reports")
     for key, path in outputs.items():
         print(f"{key}: {path}")
+
+    if not feature_sanity.empty:
+        mismatches = feature_sanity[
+            feature_sanity["row_status"].eq("mismatch")
+            | feature_sanity["col_status"].eq("mismatch")
+            | feature_sanity["sample_status"].eq("mismatch")
+        ]
+        print(
+            "\nFeature sanity summary: "
+            f"{len(feature_sanity)} outputs checked, "
+            f"{len(mismatches)} with at least one mismatch."
+        )
 
     print(
         "\nQuick summary: "
