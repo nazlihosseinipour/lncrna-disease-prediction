@@ -153,6 +153,13 @@ class Evaluator:
         '''
         threshold_per_label = []
         for column in y_true:
+            # Sparse custom datasets can produce folds where a label has only
+            # one observed class. ROC/Youden is undefined there, so fall back
+            # to the default 0.5 threshold instead of emitting warnings.
+            if y_true[column].nunique() < 2:
+                threshold_per_label.append(0.5)
+                continue
+
             fpr, tpr, thresholds = roc_curve(y_true[column], y_score[column])
             
             scores = tpr - fpr
