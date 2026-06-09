@@ -6,14 +6,11 @@ from utils.transductive_converter import Converter
 import pandas as pd
 class IPCARF:
     n_jobs = -1
-    n_estimators = 10
-#    n_estimators = 150
+    n_estimators = 150
     random_state = 0
-    n_folds = 2
-#    n_folds = 10
+    n_folds = 5
 
-    n_components_optimize = [2]
-#    n_components_optimize = [2, 4, 8, 16, 32, 64, 128]
+    n_components_optimize = [2, 4, 8, 16, 32, 64, 128]
 
     def __init__(self,
                 n_components = None,
@@ -75,8 +72,9 @@ class IPCARF:
         opt = GridSearchCV(
             pipe,
             param_grid,
+            cv=self.n_folds,
+            n_jobs=self.n_jobs,
             )
         opt.fit(x,
                 y)
         return opt.best_params_["pca__n_components"]
-
