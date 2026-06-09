@@ -157,16 +157,22 @@ def make_splits(
     return pd.DataFrame(rows).T.set_axis(columns, axis=1)
 
 
+def format_main_path_arg(path: Path) -> str:
+    if path.is_absolute():
+        return path.as_posix()
+    return f"../../{path.as_posix()}"
+
+
 def build_run_commands(x_path: Path, y_path: Path, split_path: Path) -> tuple[str, str]:
     rflda = (
         "python main.py "
-        f"../../{x_path.as_posix()} ../../{y_path.as_posix()} ../../{split_path.as_posix()} "
+        f"{format_main_path_arg(x_path)} {format_main_path_arg(y_path)} {format_main_path_arg(split_path)} "
         "false 2>&1 | tee "
         f"{y_path.stem.replace('_Y_', '_')}_rflda.log"
     )
     ipcarf = (
         "python main.py "
-        f"../../{x_path.as_posix()} ../../{y_path.as_posix()} ../../{split_path.as_posix()} "
+        f"{format_main_path_arg(x_path)} {format_main_path_arg(y_path)} {format_main_path_arg(split_path)} "
         "false 2>&1 | tee "
         f"{y_path.stem.replace('_Y_', '_')}_ipcarf.log"
     )
