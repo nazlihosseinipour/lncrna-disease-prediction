@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
+from pandas.errors import EmptyDataError
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -37,7 +38,10 @@ def parse_args() -> argparse.Namespace:
 def load_optional_csv(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
-    return pd.read_csv(path)
+    try:
+        return pd.read_csv(path)
+    except EmptyDataError:
+        return pd.DataFrame()
 
 
 def normalize_within_summary(df: pd.DataFrame) -> pd.DataFrame:

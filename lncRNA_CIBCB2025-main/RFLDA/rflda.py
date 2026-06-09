@@ -51,7 +51,12 @@ class RFLDA:
                                                         y)
         top_n_features_x = rearranged_by_importance_x.iloc[:, : self.best_n_features]
 
-        self.rflda = RandomForestRegressor(n_estimators=self.n_estimators, max_features=int(self.best_n_features/3), n_jobs = self.n_jobs, random_state = self.random_state)
+        self.rflda = RandomForestRegressor(
+            n_estimators=self.n_estimators,
+            max_features=self._rf_max_features(self.best_n_features),
+            n_jobs=self.n_jobs,
+            random_state=self.random_state,
+        )
         self.rflda.fit(top_n_features_x, y)
 
     def predict_proba(self,
@@ -79,7 +84,12 @@ class RFLDA:
             for train_index, test_index in self.splitter.split(top_n_features_x, y):
                 x_train, x_test = top_n_features_x.iloc[train_index], top_n_features_x.iloc[test_index]
                 y_train, y_test = y.iloc[train_index], y.iloc[test_index]
-                rf = RandomForestRegressor(n_estimators=self.n_estimators, max_features=int(cols/3), n_jobs = self.n_jobs, random_state = self.random_state)
+                rf = RandomForestRegressor(
+                    n_estimators=self.n_estimators,
+                    max_features=self._rf_max_features(cols),
+                    n_jobs=self.n_jobs,
+                    random_state=self.random_state,
+                )
                 rf.fit(x_train, y_train)
                 y_train_pred = rf.predict(x_train)
                 y_test_pred = rf.predict(x_test)
@@ -118,12 +128,23 @@ class RFLDA:
         return best_n_features
     def _find_intervals(self, 
                         x):
+        if x.shape[1] < 50:
+            return [x.shape[1]]
         return range(50, x.shape[1] + 1, 50)
+
+    def _rf_max_features(self,
+                         n_features):
+        return max(1, int(n_features/3))
 
     def _calculate_feature_importance(self,
                                      x,
                                      y):
-        rf = RandomForestRegressor(n_estimators=self.n_estimators, max_features=int(x.shape[1]/3), n_jobs = self.n_jobs, random_state = self.random_state)
+        rf = RandomForestRegressor(
+            n_estimators=self.n_estimators,
+            max_features=self._rf_max_features(x.shape[1]),
+            n_jobs=self.n_jobs,
+            random_state=self.random_state,
+        )
         rf.fit(x,y)
         return pd.Series(rf.feature_importances_, index = range(x.shape[1]))   
     def get_output_name(self):

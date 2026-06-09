@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from pandas.errors import EmptyDataError
 
 
 def parse_args() -> argparse.Namespace:
@@ -54,9 +55,46 @@ def main() -> None:
     from parse_results.evaluate import Evaluator
     from utils.utils import iterator_cross_validation
 
-    manifest = pd.read_csv(manifest_path)
+    try:
+        manifest = pd.read_csv(manifest_path)
+    except EmptyDataError:
+        raise ValueError(f"Manifest is empty: {manifest_path}")
     model_dir_map = {"rflda": "RFLDA", "ipcarf": "IPCARF"}
     summary_rows: list[dict[str, object]] = []
+    summary_columns = [
+        "version",
+        "feature_set",
+        "feature_key",
+        "model",
+        "n_samples",
+        "n_features",
+        "n_labels",
+        "performance_csv",
+        "hamming_meanstd",
+        "hamming_mean",
+        "hamming_std",
+        "label_ranking_meanstd",
+        "label_ranking_mean",
+        "label_ranking_std",
+        "micro_roc_meanstd",
+        "micro_roc_mean",
+        "micro_roc_std",
+        "micro_auprc_meanstd",
+        "micro_auprc_mean",
+        "micro_auprc_std",
+        "precision_meanstd",
+        "precision_mean",
+        "precision_std",
+        "recall_meanstd",
+        "recall_mean",
+        "recall_std",
+        "fscore_meanstd",
+        "fscore_mean",
+        "fscore_std",
+        "accuracy_meanstd",
+        "accuracy_mean",
+        "accuracy_std",
+    ]
 
     for _, row in manifest.iterrows():
         y_path = Path(row["y_path"])
@@ -124,7 +162,7 @@ def main() -> None:
             summary_rows.append(summary_row)
             print(f"Saved {perf_path}")
 
-    summary_df = pd.DataFrame(summary_rows)
+    summary_df = pd.DataFrame(summary_rows, columns=summary_columns)
     if not summary_df.empty:
         summary_df = summary_df.sort_values(
             ["version", "feature_set", "model"], kind="stable"
