@@ -14,13 +14,3 @@ inductive_inputs/
 results/
 Final_output/
 final-output/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.DS_Store
-*.log
-
-inductive_inputs/
-results/
-Final_output/
-final-output/
