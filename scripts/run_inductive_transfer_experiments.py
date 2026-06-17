@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -40,9 +41,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--models",
         nargs="+",
-        choices=["rflda", "ipcarf"],
-        default=["rflda", "ipcarf"],
+        choices=["rflda", "ipcarf", "rf"],
+        default=["rflda", "ipcarf", "rf"],
         help="Models to evaluate.",
+    )
+    parser.add_argument(
+        "--label-match",
+        choices=["exact", "normalized"],
+        default="normalized",
+        help=(
+            "How to match disease columns across versions. 'exact' uses raw column "
+            "names (only ~20 common); 'normalized' lowercases and collapses "
+            "non-alphanumeric characters so e.g. V1 'acute myeloid leukemia' matches "
+            "V2 'Acute Myeloid Leukemia' (~73 common)."
+        ),
     )
     parser.add_argument(
         "--source-version",
@@ -92,6 +104,16 @@ def parse_args() -> argparse.Namespace:
         help="Random seed for the target-side multilabel splits.",
     )
     parser.add_argument(
+        "--skip-target-cv",
+        action="store_true",
+        help=(
+            "Only run the cross-version transfer evaluation, skipping the "
+            "common-label target-side CV. Use this to avoid re-running the "
+            "expensive within-target CV (e.g. RFLDA on V2) when only the "
+            "transfer result is needed."
+        ),
+    )
+    parser.add_argument(
         "--outdir",
         default="lncRNA_CIBCB2025-main/parse_results/transfer_feature_representations",
         help="Directory for per-run performance CSVs and the aggregated summary.",
@@ -133,34 +155,62 @@ def resolve_manifest_path(path_value: str) -> Path:
     return PROJECT_ROOT / path
 
 
-def filter_count(series: pd.Series, min_positives: int, keep_rule: str) -> pd.Series:
-    if keep_rule == "gt":
-        return series > min_positives
-    return series >= min_positives
+def normalize_disease_name(name: str) -> str:
+    """Canonical disease key: lowercase, non-alphanumerics collapsed to single spaces."""
+    return re.sub(r"[^a-z0-9]+", " ", str(name).lower()).strip()
 
 
-def select_common_labels(
+def _passes(count: float, min_positives: int, keep_rule: str) -> bool:
+    return count > min_positives if keep_rule == "gt" else count >= min_positives
+
+
+def select_common_label_pairs(
     y_source: pd.DataFrame,
     y_target: pd.DataFrame,
     *,
     label_space: str,
     min_positives: int,
     keep_rule: str,
-) -> list[str]:
+    label_match: str,
+) -> list[tuple[str, str, str]]:
+    """Return (source_col, target_col, canonical_name) triples for shared diseases.
+
+    With label_match='normalized' the canonical key harmonizes naming differences
+    across versions (e.g. V1 'acute myeloid leukemia' / V2 'Acute Myeloid Leukemia').
+    """
     source_cols = [c for c in y_source.columns if c != "ID"]
     target_cols = [c for c in y_target.columns if c != "ID"]
-    common = sorted(set(source_cols) & set(target_cols))
+
+    def key(col: str) -> str:
+        return col if label_match == "exact" else normalize_disease_name(col)
+
+    source_by_key: dict[str, str] = {}
+    for col in source_cols:
+        source_by_key.setdefault(key(col), col)
+    target_by_key: dict[str, str] = {}
+    for col in target_cols:
+        target_by_key.setdefault(key(col), col)
+
+    common_keys = sorted(set(source_by_key) & set(target_by_key))
+    pairs = [(source_by_key[k], target_by_key[k], k) for k in common_keys]
     if label_space == "all_common":
-        return common
+        return pairs
 
-    source_counts = y_source[common].sum(axis=0)
-    target_counts = y_target[common].sum(axis=0)
-    keep_source = filter_count(source_counts, min_positives, keep_rule)
-    keep_target = filter_count(target_counts, min_positives, keep_rule)
-
-    if label_space == "train":
-        return keep_source[keep_source].index.tolist()
-    return (keep_source & keep_target)[lambda s: s].index.tolist()
+    kept: list[tuple[str, str, str]] = []
+    for source_col, target_col, canonical in pairs:
+        keep_source = _passes(
+            y_source[source_col].sum(), min_positives, keep_rule
+        )
+        if label_space == "train":
+            if keep_source:
+                kept.append((source_col, target_col, canonical))
+        else:  # "both"
+            keep_target = _passes(
+                y_target[target_col].sum(), min_positives, keep_rule
+            )
+            if keep_source and keep_target:
+                kept.append((source_col, target_col, canonical))
+    return kept
 
 
 def make_target_splits(
@@ -197,6 +247,11 @@ def build_model_factory(model_key: str):
 
         return lambda: RFLDA(binary_mode=False)
 
+    if model_key == "rf":
+        from RF.rf import RF
+
+        return lambda: RF(binary_mode=False)
+
     from IPCARF.ipcarf import IPCARF
 
     return lambda: IPCARF(binary_mode=False)
@@ -215,19 +270,24 @@ def evaluate_runs(
 ) -> list[tuple[float, ...]]:
     performance: list[tuple[float, ...]] = []
 
-    for fold_idx, (train_idx, test_idx) in enumerate(splits, start=1):
-        if mode == "transfer":
-            x_fit = x_train_full
-            y_fit = y_train_full
-        else:
-            x_fit = x_target_full.iloc[train_idx]
-            y_fit = y_target_full.iloc[train_idx]
+    # In transfer mode the training set is the full source version and is identical
+    # across folds, so fit a single model once and reuse it (important for the
+    # V2-source case where fitting on 4k+ samples per fold would dominate runtime).
+    shared_model = None
+    if mode == "transfer":
+        shared_model = model_factory()
+        shared_model.fit(x_train_full, y_train_full)
 
+    for fold_idx, (train_idx, test_idx) in enumerate(splits, start=1):
         x_test = x_target_full.iloc[test_idx]
         y_test = y_target_full.iloc[test_idx]
 
-        model = model_factory()
-        model.fit(x_fit, y_fit)
+        if mode == "transfer":
+            model = shared_model
+        else:
+            model = model_factory()
+            model.fit(x_target_full.iloc[train_idx], y_target_full.iloc[train_idx])
+
         pred = pd.DataFrame(model.predict_proba(x_test, y_test), columns=y_test.columns, index=y_test.index)
         performance.append(evaluator.evaluate(y_test, pred))
         print(f"  fold {fold_idx:02d} | mode={mode}")
@@ -276,19 +336,23 @@ def main() -> None:
         y_source_raw["ID"] = y_source_raw["ID"].astype(str)
         y_target_raw["ID"] = y_target_raw["ID"].astype(str)
 
-        labels = select_common_labels(
+        pairs = select_common_label_pairs(
             y_source_raw,
             y_target_raw,
             label_space=args.label_space,
             min_positives=args.min_positives,
             keep_rule=args.keep_rule,
+            label_match=args.label_match,
         )
-        if not labels:
+        if not pairs:
             print(f"Skipping {feature_key}: no labels survived common-space selection.")
             continue
 
-        y_source = y_source_raw[["ID"] + labels]
-        y_target = y_target_raw[["ID"] + labels]
+        labels = [canonical for _, _, canonical in pairs]
+        y_source = y_source_raw[["ID"] + [s for s, _, _ in pairs]]
+        y_source.columns = ["ID"] + labels
+        y_target = y_target_raw[["ID"] + [t for _, t, _ in pairs]]
+        y_target.columns = ["ID"] + labels
         split_path_value = str(target_row.get("split_path", "")).strip()
         split_path = Path(split_path_value) if split_path_value else None
         if split_path is not None and not split_path.is_absolute():
@@ -330,25 +394,32 @@ def main() -> None:
             )
             transfer_df.to_csv(transfer_path, index=False)
 
-            target_cv_perf = evaluate_runs(
-                evaluator=evaluator,
-                model_factory=model_factory,
-                x_train_full=x_source_model,
-                y_train_full=y_source_model,
-                x_target_full=x_target_model,
-                y_target_full=y_target_model,
-                splits=splits,
-                mode="target_cv",
-            )
-            target_cv_df = evaluator.create_df_inductive(target_cv_perf)
-            target_cv_path = outdir / (
-                f"{feature_key}_{model_key}_{args.target_version}_common_cv_performance.csv"
-            )
-            target_cv_df.to_csv(target_cv_path, index=False)
+            experiments = [
+                (f"{args.source_version}_to_{args.target_version}_transfer", transfer_df, transfer_path),
+            ]
+
+            if not args.skip_target_cv:
+                target_cv_perf = evaluate_runs(
+                    evaluator=evaluator,
+                    model_factory=model_factory,
+                    x_train_full=x_source_model,
+                    y_train_full=y_source_model,
+                    x_target_full=x_target_model,
+                    y_target_full=y_target_model,
+                    splits=splits,
+                    mode="target_cv",
+                )
+                target_cv_df = evaluator.create_df_inductive(target_cv_perf)
+                target_cv_path = outdir / (
+                    f"{feature_key}_{model_key}_{args.target_version}_common_cv_performance.csv"
+                )
+                target_cv_df.to_csv(target_cv_path, index=False)
+                experiments.append(
+                    (f"{args.target_version}_common_cv", target_cv_df, target_cv_path)
+                )
 
             for experiment_name, perf_df, perf_path in [
-                (f"{args.source_version}_to_{args.target_version}_transfer", transfer_df, transfer_path),
-                (f"{args.target_version}_common_cv", target_cv_df, target_cv_path),
+                *experiments,
             ]:
                 mean_row = perf_df[perf_df["folds"] == "mean(std)"].iloc[0].to_dict()
                 summary_row: dict[str, object] = {
@@ -360,6 +431,7 @@ def main() -> None:
                     "domains": str(source_row.get("domains", "")),
                     "model": model_key,
                     "label_space": args.label_space,
+                    "label_match": args.label_match,
                     "min_positives": args.min_positives,
                     "keep_rule": args.keep_rule,
                     "n_source_samples": int(len(x_source)),
@@ -384,7 +456,8 @@ def main() -> None:
                 summary_rows.append(summary_row)
 
             print(f"Saved {transfer_path}")
-            print(f"Saved {target_cv_path}")
+            if not args.skip_target_cv:
+                print(f"Saved {target_cv_path}")
 
     summary_df = pd.DataFrame(summary_rows)
     if not summary_df.empty:
