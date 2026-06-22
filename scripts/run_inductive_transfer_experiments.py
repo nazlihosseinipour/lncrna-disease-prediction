@@ -302,8 +302,10 @@ def main() -> None:
     project_dir = PROJECT_ROOT / args.project_dir
     outdir.mkdir(parents=True, exist_ok=True)
 
-    sys.path.append(project_dir.as_posix())
-    sys.path.append((project_dir / "parse_results").as_posix())
+    # Put professor-code imports before PYTHONPATH=mainfolder so its top-level
+    # `utils` package is not shadowed by mainfolder/utils.
+    sys.path.insert(0, (project_dir / "parse_results").as_posix())
+    sys.path.insert(0, project_dir.as_posix())
 
     from parse_results.evaluate import Evaluator
 
