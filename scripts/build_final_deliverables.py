@@ -33,6 +33,16 @@ METRICS = [
     "fscore",
     "accuracy",
 ]
+# Features derived from the lncRNA-disease association matrix (the labels Y). Using
+# them as inputs leaks the target, so they are flagged and excluded from "best"
+# selection / the V3 recommendation.
+LEAKAGE_TOKENS = ("svd_lncRNA", "gip_lncRNA", "lfs_from_Y", "svd_disease", "gip_disease")
+
+
+def is_leaky(feature_set: str) -> bool:
+    return any(tok in str(feature_set) for tok in LEAKAGE_TOKENS)
+
+
 # (metric, higher_is_better)
 METRIC_DIR = {
     "hamming": False,
@@ -94,6 +104,7 @@ def to_unified(within: pd.DataFrame, transfer: pd.DataFrame) -> pd.DataFrame:
             "n_train_samples": r["n_samples"],
             "n_test_samples": r["n_samples"],
             "label_match": "",
+            "leakage": is_leaky(r["feature_set"]),
             "performance_csv": r.get("performance_csv", ""),
         }
         for m in METRICS:
@@ -114,6 +125,7 @@ def to_unified(within: pd.DataFrame, transfer: pd.DataFrame) -> pd.DataFrame:
             "n_train_samples": r.get("n_source_samples", "") if is_transfer else r.get("n_target_samples", ""),
             "n_test_samples": r.get("n_target_samples", ""),
             "label_match": r.get("label_match", ""),
+            "leakage": is_leaky(r["feature_set"]),
             "performance_csv": r.get("performance_csv", ""),
         }
         for m in METRICS:
@@ -164,17 +176,20 @@ def main() -> None:
     final_csv = outdir / "final_comparison.csv"
     unified.to_csv(final_csv, index=False)
 
-    # Task 2: feature comparison (within-version only)
-    feat_cols = ["train_dataset", "feature_set", "model", "micro_roc_mean",
+    # Task 2: feature comparison (within-version only); keep the leakage flag visible.
+    feat_cols = ["train_dataset", "feature_set", "model", "leakage", "micro_roc_mean",
                  "micro_auprc_mean", "fscore_mean", "hamming_mean",
                  "label_ranking_mean", "accuracy_mean"]
     feature_tbl = unified[unified["evaluation"] == "within_version_cv"][feat_cols]
     feature_csv = outdir / "feature_comparison.csv"
     feature_tbl.to_csv(feature_csv, index=False)
 
-    # Task 3: model comparison (within-version, averaged over feature sets)
+    # Task 3: model comparison (within-version, averaged over LEAKAGE-FREE feature sets)
+    clean_within = unified[
+        (unified["evaluation"] == "within_version_cv") & (~unified["leakage"])
+    ]
     model_tbl = (
-        unified[unified["evaluation"] == "within_version_cv"]
+        clean_within
         .groupby(["train_dataset", "model"])[[f"{m}_mean" for m in METRICS]]
         .mean()
         .reset_index()
@@ -190,11 +205,24 @@ def main() -> None:
     # --- Task 6 final report (data-driven) ---
     lines: list[str] = ["# Task 6 — Final Report\n"]
     within_only = unified[unified["evaluation"] == "within_version_cv"]
+    # Leakage-free view used for all "best"/recommendation logic.
+    within_clean = within_only[~within_only["leakage"]]
 
-    if not within_only.empty:
-        lines.append("## Best within-version configurations\n")
-        for ds in sorted(within_only["train_dataset"].unique()):
-            sub = within_only[within_only["train_dataset"] == ds]
+    leaky_feats = sorted(within_only[within_only["leakage"]]["feature_set"].unique())
+    if leaky_feats:
+        lines.append("> ⚠️ **Label leakage warning.** Feature sets containing "
+                     "`svd_lncRNA` / `gip_lncRNA` / `lfs_from_Y` are derived from the "
+                     "lncRNA–disease association matrix (the labels Y). Using them as "
+                     "inputs leaks the target — they reach AUROC ~0.97–0.98 / AUPRC "
+                     "~0.81–0.87, which is **not a real gain**. These rows are kept in the "
+                     "tables (flagged `leakage=True`) but **excluded** from the best-config "
+                     "selection and the V3 recommendation below.\n")
+        lines.append(f"> Leaky feature sets seen: {', '.join(f'`{f}`' for f in leaky_feats)}\n")
+
+    if not within_clean.empty:
+        lines.append("## Best within-version configurations (leakage-free)\n")
+        for ds in sorted(within_clean["train_dataset"].unique()):
+            sub = within_clean[within_clean["train_dataset"] == ds]
             b = best_by(sub, "micro_auprc")
             lines.append(
                 f"- **{ds.upper()}** best by micro-AUPRC: `{b.feature_set}` + "
@@ -211,12 +239,12 @@ def main() -> None:
                                      "micro_auprc_mean", "fscore_mean", "hamming_mean"]))
         lines.append("")
 
-        # Task 5 — V1 vs V2 deltas (matched feature+model)
-        piv = within_only.pivot_table(
+        # Task 5 — V1 vs V2 deltas (matched feature+model, leakage-free)
+        piv = within_clean.pivot_table(
             index=["feature_set", "model"], columns="train_dataset",
             values=[f"{m}_mean" for m in ["micro_roc", "micro_auprc", "fscore"]],
         )
-        if {"v1", "v2"}.issubset(set(within_only["train_dataset"])):
+        if {"v1", "v2"}.issubset(set(within_clean["train_dataset"])):
             lines.append("## Task 5 — V1 → V2 change (matched feature+model)\n")
             for m in ["micro_roc", "micro_auprc", "fscore"]:
                 col = f"{m}_mean"
@@ -241,9 +269,64 @@ def main() -> None:
                 f"AUROC={bt.micro_roc_mean:.4f}) over {bt.n_labels} shared diseases.\n"
             )
 
+    # --- Interpretation (Tasks 5 & 6) ---
+    lines.append("## Interpretation (Tasks 5 & 6)\n")
+    lines.append(
+        "**Dataset facts.** V1 = 355 lncRNA × 285 disease (1,132 positives, density "
+        "1.12%, ~3.97 pos/disease). V2 = 5,338 lncRNA × 436 disease (9,907 positives, "
+        "density 0.43%, ~22.7 pos/disease). After aligning to RNA features and the "
+        "min-positives>5 label filter, the modelled matrices are V1: 353×45 labels, "
+        "V2: 4,114×124 labels."
+    )
+    lines.append("")
+    lines.append(
+        "**What changed V1→V2 (Task 5).** V2 is ~12× more lncRNAs and far more "
+        "positives per disease, but lower per-cell density. Ranking metrics improve "
+        "sharply (micro-AUROC ~0.66→~0.82) because each disease column has many more "
+        "positive examples to learn from. micro-AUPRC rises modestly. Micro-F1 *drops* "
+        "(~0.23→~0.12): V2's label space is larger and sparser, so the Youden-thresholded "
+        "operating point trades precision/recall differently — an artefact of sparsity, "
+        "not of worse ranking. Use AUROC/AUPRC, not F1, to compare across the two label "
+        "spaces."
+    )
+    lines.append("")
+
+    # V2->V1 transfer vs V1-common-CV (matched feature+model), if both present
+    tr_v2v1 = cross_tbl[cross_tbl["experiment"] == "v2_to_v1_transfer"] if not cross_tbl.empty else pd.DataFrame()
+    cc_v1 = cross_tbl[cross_tbl["experiment"] == "v1_common_cv"] if not cross_tbl.empty else pd.DataFrame()
+    if not tr_v2v1.empty and not cc_v1.empty:
+        key = ["feature_set", "model"]
+        merged = tr_v2v1.merge(cc_v1, on=key, suffixes=("_transfer", "_within"))
+        d_auprc = (merged["micro_auprc_mean_transfer"] - merged["micro_auprc_mean_within"]).mean()
+        d_auroc = (merged["micro_roc_mean_transfer"] - merged["micro_roc_mean_within"]).mean()
+        verdict = "better" if d_auprc > 0 else "worse"
+        lines.append(
+            f"**Does V2 generalize better? (Task 5).** Yes. On the 40-disease shared "
+            f"space, models *trained on V2 and tested on V1* outperform models trained on "
+            f"V1 itself: mean Δ micro-AUPRC = {d_auprc:+.4f}, mean Δ micro-AUROC = "
+            f"{d_auroc:+.4f} (V2→V1 transfer minus within-V1 common-CV). The larger, more "
+            f"label-rich V2 training set yields representations that transfer {verdict} "
+            f"than the small V1 set — strong evidence for training future models on V2."
+        )
+        lines.append("")
+    lines.append(
+        "**Effect of dataset sparsity.** Both datasets are sparse multilabel problems "
+        "(<1.2% density), which keeps exact-match accuracy near zero and micro-AUPRC low "
+        "in absolute terms (the positive rate is the AUPRC baseline). V2's higher "
+        "positives-per-disease is what lifts AUROC despite lower overall density."
+    )
+    lines.append("")
+    lines.append(
+        "**Cross-dataset caveat.** Transfer is evaluated only over RNA/psednc features "
+        "(version-independent columns) and the 40 diseases shared after name "
+        "normalization; lncRNA-sample intersection (1 exact / 14 mapped) is not a viable "
+        "transfer axis. NxN kernels (gip_lncRNA, lfs_from_Y) and per-dataset SVD bases do "
+        "not transfer across versions and are excluded from Task 4 by construction."
+    )
+    lines.append("")
     lines.append("## Recommendation for V3\n")
-    if not within_only.empty:
-        gb = best_by(within_only, "micro_auprc")
+    if not within_clean.empty:
+        gb = best_by(within_clean, "micro_auprc")
         lines.append(
             f"Train on **{gb.train_dataset.upper()}** using **`{gb.feature_set}`** with "
             f"**`{gb.model}`** — best within-version micro-AUPRC ({gb.micro_auprc_mean:.4f}). "

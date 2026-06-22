@@ -52,6 +52,10 @@ def parse_args() -> argparse.Namespace:
         "--contains", default=None,
         help="Optional substring filter over feature_set.",
     )
+    parser.add_argument(
+        "--feature-keys", nargs="+", default=None,
+        help="Optional exact filter over feature_key (sanitized feature set).",
+    )
     parser.add_argument("--n-splits", type=int, default=10)
     parser.add_argument("--outdir", default="results/within_version_cv")
     return parser.parse_args()
@@ -94,6 +98,8 @@ def main() -> None:
         manifest = manifest[
             manifest["feature_set"].str.contains(args.contains, case=False, na=False)
         ]
+    if args.feature_keys:
+        manifest = manifest[manifest["feature_key"].isin(args.feature_keys)]
 
     summary_rows: list[dict[str, object]] = []
 
