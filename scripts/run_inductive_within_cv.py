@@ -57,6 +57,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional exact filter over feature_key (sanitized feature set).",
     )
     parser.add_argument("--n-splits", type=int, default=10)
+    parser.add_argument(
+        "--threshold-mode", choices=["youden", "fixed"], default="youden",
+        help="Thresholding for the thresholded metrics. 'youden' is the legacy "
+             "(test-fit) cut; 'fixed' uses 0.5 and avoids the optimistic bias.",
+    )
     parser.add_argument("--outdir", default="results/within_version_cv")
     return parser.parse_args()
 
@@ -120,7 +125,7 @@ def main() -> None:
 
         for model_key in args.models:
             factory = build_model_factory(model_key)
-            evaluator = Evaluator()
+            evaluator = Evaluator(threshold_mode=args.threshold_mode)
             pred_dir = outdir / "predictions" / f"{version}_{feature_key}" / model_key
             pred_dir.mkdir(parents=True, exist_ok=True)
 

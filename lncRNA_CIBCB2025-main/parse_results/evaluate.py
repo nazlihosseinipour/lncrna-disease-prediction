@@ -35,11 +35,17 @@ class Evaluator:
                 concatenate_kmers_with_svd = False,
                 transductive_mode = False,
                 indexes_to_mask = None,
-                threshold = 0.5):
+                threshold = 0.5,
+                threshold_mode = "youden"):
 #        self.threshold = threshold
 #        self.threshold = 0.1
+        # threshold_mode: "youden" (legacy default; per-label Youden cut on the test
+        # fold) or "fixed" (use self.threshold for every label). "fixed" avoids the
+        # optimistic test-fit threshold flagged in the leakage audit.
+        self.threshold = threshold
+        self.threshold_mode = threshold_mode
 
-        self.converter = Converter(binary_mode = binary_mode, 
+        self.converter = Converter(binary_mode = binary_mode,
                                    concatenate_kmers_with_svd = concatenate_kmers_with_svd,
                                    transductive_mode = transductive_mode, 
                                    indexes_to_mask = indexes_to_mask)
@@ -71,8 +77,11 @@ class Evaluator:
                             y_pred):
 #        print(y_true.shape)
 #        print(y_pred.shape)
-        thresholds = self.sensivity_specifity_cutoff(y_true, y_pred)
-        y_pred_thresholded = self._apply_threshold(y_pred, thresholds)                   
+        if self.threshold_mode == "fixed":
+            thresholds = [self.threshold] * y_true.shape[1]
+        else:
+            thresholds = self.sensivity_specifity_cutoff(y_true, y_pred)
+        y_pred_thresholded = self._apply_threshold(y_pred, thresholds)
         hamming = hamming_loss(y_true, y_pred_thresholded)
         label_ranking = label_ranking_loss(y_true, y_pred_thresholded)
         roc = roc_auc_score(y_true, y_pred, average = "micro")

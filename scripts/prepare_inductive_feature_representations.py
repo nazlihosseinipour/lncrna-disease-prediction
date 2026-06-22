@@ -52,6 +52,12 @@ DEFAULT_FEATURE_SETS = [
     "psednc_matrix",
 ]
 
+# Features derived from the lncRNA-disease association matrix Y. Using them as inputs
+# leaks the target, so they are removed from the catalogue. See the leakage audit.
+LEAKY_FEATURE_NAMES = frozenset(
+    {"svd_lncRNA", "svd_disease", "gip_lncRNA", "gip_disease", "lfs_from_Y"}
+)
+
 
 @dataclass(frozen=True)
 class FeatureSpec:
@@ -188,16 +194,16 @@ def classify_feature(domain: str, feature_name: str, method_id: int | None) -> t
             return None, "token-level NN output; not a one-row-per-sample representation"
         return "sample_id_csv", "sample-level NN representation"
 
+    # Association-derived features (SVD/GIP/LFS) are computed from the label matrix Y
+    # and therefore leak the target if used as inputs. They are excluded from the
+    # catalogue so they can never enter a manifest. See results/audit/leakage_audit_report.md.
+    if feature_name in LEAKY_FEATURE_NAMES:
+        return None, "association-derived feature (built from Y); excluded to prevent target leakage"
+
     if domain == "disease":
-        if feature_name == "lfs_from_Y":
-            return "sample_square_matrix", "sample-level similarity matrix over lncRNAs"
         return None, "disease-level matrix; not a valid X matrix for the current multilabel setup"
 
     if domain == "cross":
-        if feature_name == "gip_lncRNA":
-            return "sample_square_matrix", "sample-level kernel over lncRNAs"
-        if feature_name == "svd_lncRNA":
-            return "row_order_from_labels", "sample-level lncRNA embedding aligned to label row order"
         return None, "disease-level cross feature; not a valid X matrix for the current multilabel setup"
 
     return None, "unsupported domain"
@@ -363,6 +369,13 @@ def resolve_feature_specs(
     resolved: list[FeatureSpec] = []
     for part in feature_set.split("+"):
         key = part.strip()
+        component = key.split("::")[-1]
+        if component in LEAKY_FEATURE_NAMES:
+            raise ValueError(
+                f"{version}: feature component {component!r} is association-derived "
+                f"(built from the label matrix Y) and is excluded to prevent target "
+                f"leakage. See results/audit/leakage_audit_report.md."
+            )
         spec = feature_specs.get(key)
         if spec is None:
             available = sorted(k for k in feature_specs if "::" not in k)
