@@ -33,10 +33,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 METRICS = ["hamming", "label_ranking", "micro_roc", "micro_auprc",
            "precision", "recall", "fscore", "accuracy"]
 
-DISEASE_SIM = {  # version -> ontology-based (leakage-free) disease similarity matrix
-    "v1": "Final_output/V1/Dis/disease_similarity_bma.csv",
-    "v2": "Final_output/V2/Dis/disease_similarity_bma.csv",
+DISEASE_SIM_FILENAME = "disease_similarity_bma.csv"
+VERSION_DIRS = {
+    "v1": ("v1", "V1"),
+    "v2": ("v2", "V2"),
 }
+DISEASE_DIRS = ("disease", "Dis")
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,12 +63,33 @@ def parse_mean_std(value: str) -> tuple[float, float]:
     return float(left), float(right.rstrip(")"))
 
 
+def resolve_disease_similarity_path(version: str) -> Path:
+    """Find the BMA disease-similarity file across historical output layouts."""
+    candidates: list[Path] = []
+    for root in ("final_output", "Final_output", "final-output"):
+        for version_dir in VERSION_DIRS[version]:
+            for disease_dir in DISEASE_DIRS:
+                candidates.append(
+                    PROJECT_ROOT / root / version_dir / disease_dir / DISEASE_SIM_FILENAME
+                )
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    tried = "\n  ".join(str(p.relative_to(PROJECT_ROOT)) for p in candidates)
+    raise FileNotFoundError(
+        f"{version}: could not find {DISEASE_SIM_FILENAME}. Tried:\n  {tried}"
+    )
+
+
 def load_disease_similarity(version: str, label_cols: list[str]) -> pd.DataFrame:
-    sim = pd.read_csv(PROJECT_ROOT / DISEASE_SIM[version], index_col=0)
+    sim_path = resolve_disease_similarity_path(version)
+    sim = pd.read_csv(sim_path, index_col=0)
     missing = [c for c in label_cols if c not in sim.index]
     if missing:
         raise ValueError(f"{version}: disease similarity missing {len(missing)} labels, "
-                         f"e.g. {missing[:3]}")
+                         f"e.g. {missing[:3]} in {sim_path}")
     return sim.loc[label_cols, label_cols]
 
 
@@ -161,7 +184,7 @@ def main() -> None:
         "mode": "binary", "models": args.models, "versions": args.versions,
         "n_splits": args.n_splits, "max_folds": args.max_folds,
         "threshold_mode": args.threshold_mode, "random_state": 0,
-        "disease_similarity": DISEASE_SIM,
+        "disease_similarity_filename": DISEASE_SIM_FILENAME,
     }, indent=2))
     print(f"\nSaved summary: {summary_path}")
 
