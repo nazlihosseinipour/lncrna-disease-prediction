@@ -271,15 +271,23 @@ def select_feature_sets(
     explicit_feature_sets: list[str] | None,
     all_compatible: bool,
 ) -> list[str]:
-    if explicit_feature_sets:
-        return explicit_feature_sets
+    # --all-compatible and explicit --feature-set are unioned (dedup, order-preserving)
+    # so a single invocation can sweep every leakage-free single feature AND include
+    # an explicit concatenation like "kmer_matrix_k4+rc_kmer_matrix_k4+psednc_matrix".
+    sets: list[str] = []
     if all_compatible:
         canonical = {
-            spec.feature_name: spec
+            spec.feature_name
             for key, spec in feature_specs.items()
             if "::" not in key
         }
-        return sorted(canonical)
+        sets.extend(sorted(canonical))
+    if explicit_feature_sets:
+        for feature_set in explicit_feature_sets:
+            if feature_set not in sets:
+                sets.append(feature_set)
+    if sets:
+        return sets
     return list(DEFAULT_FEATURE_SETS)
 
 

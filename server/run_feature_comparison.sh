@@ -8,16 +8,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 PYTHON="${PYTHON:-.venv/bin/python}"
 
-echo "[1/2] Preparing leakage-free manifest (no SVD/GIP/LFS) ..."
+echo "[1/2] Preparing leakage-free manifest (ALL sequence features, no SVD/GIP/LFS) ..."
 "$PYTHON" scripts/prepare_inductive_feature_representations.py \
-  --versions v1 v2 \
-  --feature-set kmer_matrix_k4 \
-  --feature-set rc_kmer_matrix_k4 \
-  --feature-set psednc_matrix \
+  --versions v1 v2 --all-compatible \
   --feature-set "kmer_matrix_k4+rc_kmer_matrix_k4+psednc_matrix" \
   --min-positives 5 --keep-rule gt --n-splits 10 --random-state 0
-# To sweep EVERY compatible (sequence) feature instead, replace the --feature-set
-# lines above with:  --all-compatible
+# --all-compatible sweeps every leakage-free sequence feature; the explicit --feature-set
+# adds the concatenated representation. For a QUICK run, replace this with the explicit
+# 3-4 --feature-set lines (kmer_matrix_k4 / rc_kmer_matrix_k4 / psednc_matrix / combined).
 
 echo "[2/2] Within-version CV (rflda ipcarf rf) ..."
 "$PYTHON" scripts/run_inductive_within_cv.py \

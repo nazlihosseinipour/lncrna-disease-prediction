@@ -23,10 +23,17 @@ Dependencies: `scikit-learn`, `pandas`, `numpy`, `iterative-stratification`
 | 1 | `server/run_feature_comparison.sh` | within-version CV (V1→V1, V2→V2) | — |
 | 2 | `server/run_v1_v2_generalization.sh` | transfer V1→V2, V2→V1 | manifest from step 1 |
 | 3 | `server/run_binary_comparison.sh` | binary pairwise comparison | manifest from step 1 |
-| 4 | `server/run_final_aggregation.sh` | all comparison tables + reports | steps 1–3 |
+| 4 | `server/run_model_comparison.sh` *(cheap, optional)* | model-comparison table + generalization matrix (V1→V2 column) | steps 1–2 |
+| 5 | `server/run_final_aggregation.sh` | all comparison tables + reports | steps 1–3 |
 
 Steps 1–3 are independent after step 1 has built the manifest; on a multi-core box they
-can run concurrently. Step 4 must run last.
+can run concurrently. Step 4 is a cheap aggregation you can run once steps 1–2 finish (it's
+also re-done inside step 5). Step 5 must run last.
+
+**Paper-protocol note:** thresholding stays on **Youden** (the paper rejects 0.5 —
+`--threshold-mode youden` is correct, do not change). The disease set is the pipeline's
+re-derived set (V1=45, V2=124), **not** the paper's 44 — that change is pending sign-off
+(`results/audit/outstanding_changes.md` #3). Neither affects leakage-freeness.
 
 ## 2. Exact commands
 
@@ -41,7 +48,10 @@ nohup bash server/run_v1_v2_generalization.sh    > logs/generalization.log 2>&1 
 MAX_FOLDS=1 bash server/run_binary_comparison.sh                  # quick smoke
 nohup bash server/run_binary_comparison.sh       > logs/binary.log 2>&1 &
 
-# Step 4 — aggregation (after 1–3 finish)
+# Step 4 — model comparison (cheap; optional, after steps 1–2)
+bash server/run_model_comparison.sh
+
+# Step 5 — aggregation (after 1–3 finish)
 bash server/run_final_aggregation.sh
 ```
 
