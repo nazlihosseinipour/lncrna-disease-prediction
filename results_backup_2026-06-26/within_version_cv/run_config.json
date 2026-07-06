@@ -1,0 +1,15 @@
+{
+  "timestamp_utc": "2026-06-22T11:17:02.999651+00:00",
+  "manifest": "/data/r0865750/lncrna-disease-prediction/inductive_inputs/feature_representations/feature_representation_manifest.csv",
+  "models": [
+    "rflda",
+    "ipcarf",
+    "rf"
+  ],
+  "versions": null,
+  "contains": null,
+  "n_splits": 10,
+  "random_state": 0,
+  "model_n_estimators": 150,
+  "outdir": "/data/r0865750/lncrna-disease-prediction/results/within_version_cv"
+}
