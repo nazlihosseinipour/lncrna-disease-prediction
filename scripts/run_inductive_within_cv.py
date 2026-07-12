@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +24,7 @@ import pandas as pd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+RESULTS_ROOT = os.environ.get("RESULTS_ROOT", "results")
 
 METRICS = [
     "hamming",
@@ -62,7 +64,7 @@ def parse_args() -> argparse.Namespace:
         help="Thresholding for the thresholded metrics. 'youden' is the legacy "
              "(test-fit) cut; 'fixed' uses 0.5 and avoids the optimistic bias.",
     )
-    parser.add_argument("--outdir", default="results/within_version_cv")
+    parser.add_argument("--outdir", default=f"{RESULTS_ROOT}/within_version_cv")
     return parser.parse_args()
 
 

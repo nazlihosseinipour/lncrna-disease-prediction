@@ -15,6 +15,7 @@ At the end it prints the results/ tree and an explicit "where everything is save
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -22,6 +23,7 @@ from pandas.errors import EmptyDataError
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+RESULTS_ROOT = os.environ.get("RESULTS_ROOT", "results")
 
 METRICS = [
     "hamming",
@@ -59,14 +61,14 @@ METRIC_DIR = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--within-dir", default="results/within_version_cv",
+        "--within-dir", default=f"{RESULTS_ROOT}/within_version_cv",
         help="Directory holding within_version_cv_summary*.csv files.",
     )
     parser.add_argument(
         "--transfer-summary",
-        default="results/transfer/transfer_feature_representation_summary.csv",
+        default=f"{RESULTS_ROOT}/transfer_v1_to_v2/transfer_summary.csv",
     )
-    parser.add_argument("--outdir", default="results")
+    parser.add_argument("--outdir", default=RESULTS_ROOT)
     return parser.parse_args()
 
 

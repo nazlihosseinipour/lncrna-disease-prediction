@@ -72,7 +72,13 @@ class FeatureSpec:
 
 
 def sanitize_feature_key(feature_set: str) -> str:
-    return feature_set.replace("+", "__").replace("::", "__")
+    key = feature_set.replace("+", "__").replace("::", "__")
+    # A physical concatenation of every safe representation exceeds common
+    # filesystem component limits if all component names are embedded in filenames.
+    # The manifest retains the complete ordered component list.
+    if len(key.encode("utf-8")) > 180:
+        return "all_safe_concatenated"
+    return key
 
 
 def resolve_version_dir(version: str) -> Path:

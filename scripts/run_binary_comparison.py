@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +31,7 @@ from pathlib import Path
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+RESULTS_ROOT = os.environ.get("RESULTS_ROOT", "results")
 METRICS = ["hamming", "label_ranking", "micro_roc", "micro_auprc",
            "precision", "recall", "fscore", "accuracy"]
 
@@ -54,7 +56,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-folds", type=int, default=None,
                    help="Cap folds for a cheap validation run.")
     p.add_argument("--threshold-mode", choices=["youden", "fixed"], default="youden")
-    p.add_argument("--outdir", default="results/binary_comparison")
+    p.add_argument("--outdir", default=f"{RESULTS_ROOT}/binary_comparison")
     return p.parse_args()
 
 
@@ -178,6 +180,12 @@ def main() -> None:
 
     summary_df = pd.DataFrame(summary_rows)
     summary_path = outdir / "binary_comparison_summary.csv"
+    if summary_path.exists() and not summary_df.empty:
+        existing = pd.read_csv(summary_path)
+        key = ["version", "feature_key", "model"]
+        done = set(map(tuple, summary_df[key].itertuples(index=False, name=None)))
+        existing = existing[~existing[key].apply(tuple, axis=1).isin(done)]
+        summary_df = pd.concat([existing, summary_df], ignore_index=True)
     summary_df.to_csv(summary_path, index=False)
     (outdir / "run_config.json").write_text(json.dumps({
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),

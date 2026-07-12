@@ -10,6 +10,21 @@ __pycache__/
 .DS_Store
 *.log
 
+# Local consolidation/audit handoff documents and prompts
+MORNING_RESULTS_STATUS.md
+FINAL_RESULTS_FOLDER_STATUS.md
+codex_master_audit_repair_prompt.md
+codex_single_results_folder_prompt.md
+
+# Large local/server-transfer and safety archives
+archive/
+lncrna_server_package.tar.gz
+lncrna_server_package.tar.gz.sha256
+*.tar.gz.sha256
+
+# Server runtime state (the scripts themselves remain tracked)
+results/logs/
+
 inductive_inputs/
 results/
 Final_output/

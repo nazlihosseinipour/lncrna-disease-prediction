@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ except Exception:  # pragma: no cover - handled at runtime
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+RESULTS_ROOT = os.environ.get("RESULTS_ROOT", "results")
 
 VERSION_TO_LABEL_CSV = {
     "v1": PROJECT_ROOT / "Data/output_data/sequences_for_oop.csv",
@@ -44,6 +46,10 @@ def parse_args() -> argparse.Namespace:
         choices=["rflda", "ipcarf", "rf"],
         default=["rflda", "ipcarf", "rf"],
         help="Models to evaluate.",
+    )
+    parser.add_argument(
+        "--feature-keys", nargs="+", default=None,
+        help="Run only these exact manifest feature keys (required for isolated repairs).",
     )
     parser.add_argument(
         "--label-match",
@@ -80,6 +86,11 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--shared-disease-list",
+        default="results/audit/disease_protocol/canonical_shared_disease_list.csv",
+        help="Canonical CSV whose canonical_name order is enforced in both directions.",
+    )
+    parser.add_argument(
         "--min-positives",
         type=int,
         default=5,
@@ -114,8 +125,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--threshold-mode", choices=["youden", "fixed"], default="fixed",
+        help="Threshold protocol for threshold-dependent metrics. Fixed 0.5 is the leakage-free default.",
+    )
+    parser.add_argument(
+        "--keep-overlapping-target-rnas", action="store_true",
+        help="Opt out of strict unseen-RNA evaluation. By default exact source IDs are removed from target.",
+    )
+    parser.add_argument(
         "--outdir",
-        default="lncRNA_CIBCB2025-main/parse_results/transfer_feature_representations",
+        default=f"{RESULTS_ROOT}/transfer_v1_to_v2",
         help="Directory for per-run performance CSVs and the aggregated summary.",
     )
     return parser.parse_args()
@@ -257,6 +276,22 @@ def build_model_factory(model_key: str):
     return lambda: IPCARF(binary_mode=False)
 
 
+def remove_exact_target_overlap(
+    x_source: pd.DataFrame,
+    x_target: pd.DataFrame,
+    y_target: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    """Remove exact source RNA IDs from target X/Y while preserving target order."""
+    source_ids = set(x_source["sample_id"].astype(str))
+    target_ids = x_target["sample_id"].astype(str)
+    overlap = target_ids[target_ids.isin(source_ids)].tolist()
+    keep = ~target_ids.isin(source_ids)
+    x_clean = x_target.loc[keep].reset_index(drop=True)
+    y_by_id = y_target.assign(ID=y_target["ID"].astype(str)).set_index("ID")
+    y_clean = y_by_id.loc[x_clean["sample_id"].astype(str)].reset_index()
+    return x_clean, y_clean, overlap
+
+
 def evaluate_runs(
     *,
     evaluator,
@@ -317,6 +352,8 @@ def main() -> None:
     source_rows = manifest[manifest["version"] == args.source_version].set_index("feature_key")
     target_rows = manifest[manifest["version"] == args.target_version].set_index("feature_key")
     common_feature_keys = sorted(set(source_rows.index) & set(target_rows.index))
+    if args.feature_keys:
+        common_feature_keys = [k for k in common_feature_keys if k in set(args.feature_keys)]
 
     for feature_key in common_feature_keys:
         source_row = source_rows.loc[feature_key]
@@ -338,6 +375,13 @@ def main() -> None:
         y_source_raw["ID"] = y_source_raw["ID"].astype(str)
         y_target_raw["ID"] = y_target_raw["ID"].astype(str)
 
+        if not args.keep_overlapping_target_rnas:
+            x_target, y_target_raw, removed_overlap = remove_exact_target_overlap(
+                x_source, x_target, y_target_raw
+            )
+        else:
+            removed_overlap = []
+
         pairs = select_common_label_pairs(
             y_source_raw,
             y_target_raw,
@@ -346,6 +390,17 @@ def main() -> None:
             keep_rule=args.keep_rule,
             label_match=args.label_match,
         )
+        protocol_path = PROJECT_ROOT / args.shared_disease_list
+        if protocol_path.exists():
+            required = pd.read_csv(protocol_path)["canonical_name"].astype(str).tolist()
+            by_name = {canonical: (source, target, canonical) for source, target, canonical in pairs}
+            missing_protocol = [name for name in required if name not in by_name]
+            if missing_protocol:
+                raise ValueError(
+                    f"Canonical shared-disease list is incompatible with {args.source_version}→"
+                    f"{args.target_version}: {missing_protocol[:5]}"
+                )
+            pairs = [by_name[name] for name in required]
         if not pairs:
             print(f"Skipping {feature_key}: no labels survived common-space selection.")
             continue
@@ -378,7 +433,7 @@ def main() -> None:
 
         for model_key in args.models:
             model_factory = build_model_factory(model_key)
-            evaluator = Evaluator()
+            evaluator = Evaluator(threshold_mode=args.threshold_mode)
 
             transfer_perf = evaluate_runs(
                 evaluator=evaluator,
@@ -466,7 +521,13 @@ def main() -> None:
         summary_df = summary_df.sort_values(
             ["experiment", "feature_set", "model"], kind="stable"
         )
-    summary_path = outdir / "transfer_feature_representation_summary.csv"
+    summary_path = outdir / "transfer_summary.csv"
+    if summary_path.exists() and not summary_df.empty:
+        existing = pd.read_csv(summary_path)
+        key = ["experiment", "feature_key", "model"]
+        done = set(map(tuple, summary_df[key].itertuples(index=False, name=None)))
+        existing = existing[~existing[key].apply(tuple, axis=1).isin(done)]
+        summary_df = pd.concat([existing, summary_df], ignore_index=True)
     summary_df.to_csv(summary_path, index=False)
     print(f"\nSaved summary: {summary_path}")
 

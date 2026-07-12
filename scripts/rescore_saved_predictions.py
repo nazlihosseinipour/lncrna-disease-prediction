@@ -9,12 +9,14 @@ identical across modes by construction; only the thresholded metrics change.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+RESULTS_ROOT = os.environ.get("RESULTS_ROOT", "results")
 METRICS = ["hamming", "label_ranking", "micro_roc", "micro_auprc",
            "precision", "recall", "fscore", "accuracy"]
 
@@ -24,11 +26,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--manifest",
                    default="inductive_inputs/feature_representations/feature_representation_manifest.csv")
     p.add_argument("--project-dir", default="lncRNA_CIBCB2025-main")
-    p.add_argument("--pred-root", default="results/within_version_cv/predictions")
+    p.add_argument("--pred-root", default=f"{RESULTS_ROOT}/within_version_cv/predictions")
     p.add_argument("--models", nargs="+", default=["rflda", "ipcarf", "rf"])
     p.add_argument("--threshold-mode", choices=["youden", "fixed"], default="fixed")
     p.add_argument("--n-splits", type=int, default=10)
-    p.add_argument("--outdir", default="results/within_version_cv")
+    p.add_argument("--outdir", default=f"{RESULTS_ROOT}/within_version_cv")
     return p.parse_args()
 
 
