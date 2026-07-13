@@ -170,6 +170,7 @@ def main() -> None:
             summary = {"experiment": f"binary_{version}_cv", "mode": "binary",
                        "version": version, "feature_set": row["feature_set"],
                        "feature_key": feature_key, "model": model_key,
+                       "threshold_mode": args.threshold_mode,
                        "n_folds_run": len(perf), "performance_csv": perf_path.as_posix()}
             for m in METRICS:
                 summary[f"{m}_meanstd"] = mean_row[m]

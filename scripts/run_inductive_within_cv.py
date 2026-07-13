@@ -161,6 +161,7 @@ def main() -> None:
                 "feature_set": row["feature_set"],
                 "feature_key": feature_key,
                 "model": model_key,
+                "threshold_mode": args.threshold_mode,
                 "n_samples": int(row["n_samples"]),
                 "n_features": int(row["n_features"]),
                 "n_labels": int(row["n_labels"]),
@@ -203,6 +204,7 @@ def main() -> None:
         "n_splits": args.n_splits,
         "random_state": 0,
         "model_n_estimators": 150,
+        "threshold_mode": args.threshold_mode,
         "outdir": outdir.as_posix(),
     }
     (outdir / "run_config.json").write_text(json.dumps(run_config, indent=2))

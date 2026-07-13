@@ -29,3 +29,18 @@ def test_large_concatenation_uses_short_stable_key():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     assert module.sanitize_feature_key("+".join(["long_feature_name"] * 20)) == "all_safe_concatenated"
+
+
+def test_canonical_protocol_can_resolve_from_all_common_after_filtering():
+    source = pd.DataFrame({"ID": ["a", "b"], "heart failure": [1, 0], "glioma": [1, 1]})
+    target = pd.DataFrame({"ID": ["c", "d"], "Heart Failure": [1, 0], "Glioma": [1, 1]})
+    filtered = M.select_common_label_pairs(
+        source, target, label_space="both", min_positives=1,
+        keep_rule="gt", label_match="normalized",
+    )
+    all_common = M.select_common_label_pairs(
+        source, target, label_space="all_common", min_positives=1,
+        keep_rule="gt", label_match="normalized",
+    )
+    assert "heart failure" not in {row[2] for row in filtered}
+    assert "heart failure" in {row[2] for row in all_common}

@@ -12,10 +12,18 @@ LEDGER="results/logs/server_rerun_ledger.tsv"
 
 valid_performance() {
   local file="$1"
-  [[ -f "$file" ]] && python - "$file" <<'PY'
-import sys, pandas as pd
-d=pd.read_csv(sys.argv[1])
-assert 'folds' in d and d.folds.astype(str).str.match(r'fold\d+').sum()==10
+  [[ -f "$file" ]] && python scripts/validate_performance.py "$file"
+}
+
+valid_transfer_performance() {
+  local file="$1" protocol="${1%.csv}.protocol.json"
+  valid_performance "$file" && [[ -f "$protocol" ]] && python - "$protocol" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+assert data.get("threshold_mode") == "fixed"
+assert data.get("strict_target_overlap_removal") is True
+assert data.get("n_splits") == 10
+assert data.get("canonical_disease_names")
 PY
 }
 
@@ -30,6 +38,22 @@ run_cell() {
   printf '%s\t%s\tSTARTED\t%s\n' "$(date -u +%FT%TZ)" "$cell" "$*" >> "$LEDGER"
   if "$@" >"$log" 2>&1 && valid_performance "$output"; then
     printf '%s\t%s\tCOMPLETE\t%s\n' "$(date -u +%FT%TZ)" "$cell" "$*" >> "$LEDGER"
+  else
+    printf '%s\t%s\tFAILED\t%s\n' "$(date -u +%FT%TZ)" "$cell" "$*" >> "$LEDGER"; return 1
+  fi
+}
+
+run_transfer_cell() {
+  local cell="$1" output="$2"; shift 2
+  local lock="results/logs/locks/${cell}.lock" log="results/logs/${cell}.log"
+  if valid_transfer_performance "$output"; then
+    printf '%s\t%s\tSKIPPED_VALID_STRICT\t%s\n' "$(date -u +%FT%TZ)" "$cell" "$*" >> "$LEDGER"; return 0
+  fi
+  if ! mkdir "$lock" 2>/dev/null; then echo "Locked: $cell"; return 0; fi
+  trap 'rmdir "$lock" 2>/dev/null || true' RETURN
+  printf '%s\t%s\tSTARTED\t%s\n' "$(date -u +%FT%TZ)" "$cell" "$*" >> "$LEDGER"
+  if "$@" >"$log" 2>&1 && valid_transfer_performance "$output"; then
+    printf '%s\t%s\tCOMPLETE_STRICT\t%s\n' "$(date -u +%FT%TZ)" "$cell" "$*" >> "$LEDGER"
   else
     printf '%s\t%s\tFAILED\t%s\n' "$(date -u +%FT%TZ)" "$cell" "$*" >> "$LEDGER"; return 1
   fi

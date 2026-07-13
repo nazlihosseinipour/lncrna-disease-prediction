@@ -12,6 +12,6 @@ for direction in v1:v2 v2:v1; do
   for feature in "${features[@]}"; do for model in rf ipcarf; do
     cell="transfer_${source}_${target}_${feature}_${model}"
     output="$outdir/${feature}_${model}_${source}_to_${target}_transfer_performance.csv"
-    run_cell "$cell" "$output" python scripts/run_inductive_transfer_experiments.py --source-version "$source" --target-version "$target" --models "$model" --feature-keys "$feature" --label-space both --shared-disease-list results/audit/disease_protocol/canonical_shared_disease_list.csv --threshold-mode fixed --skip-target-cv --outdir "$outdir"
+    run_transfer_cell "$cell" "$output" python scripts/run_inductive_transfer_experiments.py --source-version "$source" --target-version "$target" --models "$model" --feature-keys "$feature" --label-space both --shared-disease-list config/canonical_shared_disease_list.csv --threshold-mode fixed --skip-target-cv --outdir "$outdir"
   done; done
 done

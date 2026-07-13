@@ -1,0 +1,12 @@
+order,canonical_name,v1_name,v2_name,v1_positives_strict,v2_positives_strict
+0,acute myocardial infarction,acute myocardial infarction,acute myocardial infarction,7,7
+1,diabetes mellitus,diabetes mellitus,Diabetes Mellitus,7,24
+2,esophageal squamous cell carcinoma,esophageal squamous cell carcinoma,Esophageal Squamous Cell Carcinoma,22,848
+3,glioma,glioma,Glioma,31,223
+4,melanoma,melanoma,Melanoma,14,65
+5,nasopharyngeal carcinoma,nasopharyngeal carcinoma,Nasopharyngeal carcinoma,15,95
+6,neuroblastoma,neuroblastoma,Neuroblastoma,11,32
+7,osteoarthritis,osteoarthritis,Osteoarthritis,6,248
+8,osteosarcoma,osteosarcoma,Osteosarcoma,19,204
+9,pancreatic ductal adenocarcinoma,pancreatic ductal adenocarcinoma,pancreatic ductal adenocarcinoma,12,37
+10,tongue squamous cell carcinoma,tongue squamous cell carcinoma,tongue squamous cell carcinoma,6,28

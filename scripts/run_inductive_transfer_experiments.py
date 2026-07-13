@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import sys
@@ -87,7 +89,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--shared-disease-list",
-        default="results/audit/disease_protocol/canonical_shared_disease_list.csv",
+        default="config/canonical_shared_disease_list.csv",
         help="Canonical CSV whose canonical_name order is enforced in both directions.",
     )
     parser.add_argument(
@@ -392,8 +394,23 @@ def main() -> None:
         )
         protocol_path = PROJECT_ROOT / args.shared_disease_list
         if protocol_path.exists():
+            # The protocol CSV is authoritative and already encodes the symmetric,
+            # strict-unseen-RNA positive-count rule. Resolve it against all common
+            # normalized columns; applying a direction-specific filter first can
+            # incorrectly discard a required label after target-overlap removal.
+            all_common_pairs = select_common_label_pairs(
+                y_source_raw,
+                y_target_raw,
+                label_space="all_common",
+                min_positives=args.min_positives,
+                keep_rule=args.keep_rule,
+                label_match=args.label_match,
+            )
             required = pd.read_csv(protocol_path)["canonical_name"].astype(str).tolist()
-            by_name = {canonical: (source, target, canonical) for source, target, canonical in pairs}
+            by_name = {
+                canonical: (source, target, canonical)
+                for source, target, canonical in all_common_pairs
+            }
             missing_protocol = [name for name in required if name not in by_name]
             if missing_protocol:
                 raise ValueError(
@@ -414,7 +431,15 @@ def main() -> None:
         split_path = Path(split_path_value) if split_path_value else None
         if split_path is not None and not split_path.is_absolute():
             split_path = PROJECT_ROOT / split_path
-        if split_path is not None and split_path.exists():
+        if removed_overlap:
+            # Prepared split files contain positional indices for the original
+            # target matrix. Once strict unseen-RNA filtering removes a row, those
+            # indices no longer address the same samples. Regenerate deterministic
+            # folds on the filtered, aligned target instead of shifting silently.
+            splits = make_target_splits(
+                x_target, y_target, args.n_splits, args.random_state
+            )
+        elif split_path is not None and split_path.exists():
             splits = load_splits_from_csv(split_path, args.n_splits)
         else:
             splits = make_target_splits(
@@ -449,7 +474,39 @@ def main() -> None:
             transfer_path = outdir / (
                 f"{feature_key}_{model_key}_{args.source_version}_to_{args.target_version}_transfer_performance.csv"
             )
+            protocol_output = transfer_path.with_suffix(".protocol.json")
+            if transfer_path.exists() and not protocol_output.exists():
+                # Preserve historical/non-strict evidence before replacing the
+                # canonical path with a strict fixed-threshold result.
+                legacy_dir = outdir / "legacy_stale"
+                legacy_dir.mkdir(parents=True, exist_ok=True)
+                digest = hashlib.sha256(transfer_path.read_bytes()).hexdigest()[:12]
+                legacy_path = legacy_dir / f"{transfer_path.stem}.{digest}.csv"
+                if not legacy_path.exists():
+                    transfer_path.replace(legacy_path)
             transfer_df.to_csv(transfer_path, index=False)
+            protocol_bytes = protocol_path.read_bytes() if protocol_path.exists() else b""
+            protocol_output.write_text(
+                json.dumps(
+                    {
+                        "source_version": args.source_version,
+                        "target_version": args.target_version,
+                        "feature_key": feature_key,
+                        "model": model_key,
+                        "threshold_mode": args.threshold_mode,
+                        "strict_target_overlap_removal": not args.keep_overlapping_target_rnas,
+                        "removed_exact_target_ids": removed_overlap,
+                        "canonical_disease_names": labels,
+                        "canonical_disease_list": args.shared_disease_list,
+                        "canonical_disease_list_sha256": hashlib.sha256(protocol_bytes).hexdigest(),
+                        "n_splits": args.n_splits,
+                        "random_state": args.random_state,
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
             experiments = [
                 (f"{args.source_version}_to_{args.target_version}_transfer", transfer_df, transfer_path),
@@ -487,6 +544,7 @@ def main() -> None:
                     "feature_set": str(source_row["feature_set"]),
                     "domains": str(source_row.get("domains", "")),
                     "model": model_key,
+                    "threshold_mode": args.threshold_mode,
                     "label_space": args.label_space,
                     "label_match": args.label_match,
                     "min_positives": args.min_positives,
