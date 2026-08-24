@@ -24,9 +24,11 @@ class RF:
                 concatenate_kmers_with_svd=False,
                 transductive_mode=False,
                 indexes_to_mask=None,
-                disease_similarities=None):
+                disease_similarities=None,
+                oob_score=False):
         # feature_importance kept for signature parity with RFLDA; unused here.
         self.feature_importance = feature_importance
+        self.oob_score = oob_score
         self.converter = Converter(binary_mode=binary_mode,
                                    concatenate_kmers_with_svd=concatenate_kmers_with_svd,
                                    transductive_mode=transductive_mode,
@@ -42,8 +44,15 @@ class RF:
             n_estimators=self.n_estimators,
             n_jobs=self.n_jobs,
             random_state=self.random_state,
+            oob_score=self.oob_score,
         )
         self.rf.fit(x, y)
+
+    def get_oob_predictions(self):
+        """Return training-only OOB scores for threshold calibration."""
+        if not self.oob_score or not hasattr(self.rf, "oob_prediction_"):
+            raise RuntimeError("OOB predictions require RF(oob_score=True) before fit().")
+        return self.rf.oob_prediction_
 
     def predict_proba(self,
                 x,

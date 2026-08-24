@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 try:
@@ -83,9 +85,15 @@ def sanitize_feature_key(feature_set: str) -> str:
 
 def resolve_version_dir(version: str) -> Path:
     for candidate in VERSION_CONFIG[version]["version_dirs"]:
-        path = PROJECT_ROOT / "final_output" / candidate
-        if path.exists():
-            return path
+        candidate_path = Path(candidate)
+        paths = (
+            [candidate_path]
+            if candidate_path.is_absolute()
+            else [PROJECT_ROOT / candidate_path, PROJECT_ROOT / "final_output" / candidate_path]
+        )
+        for path in paths:
+            if path.exists():
+                return path
     raise FileNotFoundError(f"Could not find final_output directory for version {version}.")
 
 
@@ -141,6 +149,298 @@ def filter_labels(
             f"No labels survived the filter ({keep_rule} {min_positives}) for {label_csv}."
         )
     return y[["ID"] + keep], counts[keep]
+
+
+def load_label_source(path: Path) -> pd.DataFrame:
+    """Load IDs, sequences (when available), and every candidate label.
+
+    Label filtering must happen *after* feature alignment and sequence
+    deduplication.  Filtering the source table first made the manifest counts
+    stale whenever feature extraction dropped samples.
+    """
+    df = pd.read_csv(path).drop(columns=["Unnamed: 0"], errors="ignore")
+    if "ID" not in df.columns:
+        raise ValueError(f"{path} is missing required ID column.")
+    df["ID"] = df["ID"].astype(str).str.strip()
+    if df["ID"].duplicated().any():
+        examples = df.loc[df["ID"].duplicated(False), "ID"].head(8).tolist()
+        raise ValueError(f"{path} contains duplicate IDs: {examples}")
+    return df
+
+
+def normalize_sequence_key(value: object) -> str:
+    """Return a stable RNA sequence identity key without exposing sequence text."""
+    raw = "" if pd.isna(value) else str(value)
+    sequence = "".join(raw.split()).upper().replace("T", "U")
+    return hashlib.sha256(sequence.encode("utf-8")).hexdigest() if sequence else ""
+
+
+def collapse_identical_sequences(
+    x: pd.DataFrame,
+    y: pd.DataFrame,
+    sequences: pd.Series | None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Collapse identical biological inputs and OR their association labels.
+
+    Identical sequences cannot be independent train/test samples.  Keeping them
+    as separate rows caused both leakage and contradictory targets in V2.  The
+    first ID is retained deterministically and all positive associations from
+    its aliases are preserved with a logical OR.
+    """
+    if len(x) != len(y):
+        raise ValueError("X/Y row counts differ before sequence deduplication.")
+    if x["sample_id"].astype(str).tolist() != y["ID"].astype(str).tolist():
+        raise ValueError("X/Y IDs are not aligned before sequence deduplication.")
+
+    label_cols = [c for c in y.columns if c != "ID"]
+    feature_cols = [c for c in x.columns if c != "sample_id"]
+    if sequences is None:
+        keys = [f"id:{sample_id}" for sample_id in x["sample_id"].astype(str)]
+    else:
+        if len(sequences) != len(x):
+            raise ValueError("Sequence/X row counts differ before deduplication.")
+        keys = [
+            normalize_sequence_key(seq) or f"id:{sample_id}"
+            for seq, sample_id in zip(sequences, x["sample_id"].astype(str))
+        ]
+
+    groups: dict[str, list[int]] = {}
+    for position, key in enumerate(keys):
+        groups.setdefault(key, []).append(position)
+
+    x_rows: list[pd.Series] = []
+    y_rows: list[pd.Series] = []
+    audit_rows: list[dict[str, object]] = []
+    for key, positions in groups.items():
+        representative = positions[0]
+        representative_features = x.iloc[representative][feature_cols].to_numpy(dtype=float)
+        for position in positions[1:]:
+            candidate = x.iloc[position][feature_cols].to_numpy(dtype=float)
+            if not np.allclose(
+                representative_features,
+                candidate,
+                rtol=1e-10,
+                atol=1e-12,
+                equal_nan=True,
+            ):
+                ids = x.iloc[positions]["sample_id"].astype(str).tolist()
+                raise ValueError(
+                    "Identical source sequences produced different feature rows: "
+                    f"{ids}. Regenerate the feature representation before continuing."
+                )
+
+        x_row = x.iloc[representative].copy()
+        y_row = y.iloc[representative].copy()
+        if len(positions) > 1:
+            group_y = y.iloc[positions][label_cols].apply(pd.to_numeric, errors="raise")
+            y_row.loc[label_cols] = group_y.max(axis=0).astype(int)
+            varying = int((group_y.max(axis=0) != group_y.min(axis=0)).sum())
+            member_ids = x.iloc[positions]["sample_id"].astype(str).tolist()
+            audit_rows.append(
+                {
+                    "representative_id": member_ids[0],
+                    "member_ids": "|".join(member_ids),
+                    "group_size": len(member_ids),
+                    "conflicting_label_count": varying,
+                    "sequence_sha256": key if not key.startswith("id:") else "",
+                }
+            )
+        x_rows.append(x_row)
+        y_rows.append(y_row)
+
+    x_out = pd.DataFrame(x_rows, columns=x.columns).reset_index(drop=True)
+    y_out = pd.DataFrame(y_rows, columns=y.columns).reset_index(drop=True)
+    audit = pd.DataFrame(
+        audit_rows,
+        columns=[
+            "representative_id",
+            "member_ids",
+            "group_size",
+            "conflicting_label_count",
+            "sequence_sha256",
+        ],
+    )
+    return x_out, y_out, audit
+
+
+def drop_duplicate_feature_columns(
+    x: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Remove exact duplicate columns so concatenation cannot overweight a block."""
+    feature_cols = [c for c in x.columns if c != "sample_id"]
+    transposed = x[feature_cols].T
+    duplicate_mask = transposed.duplicated(keep="first")
+    dropped = transposed.index[duplicate_mask].tolist()
+    audit_rows: list[dict[str, str]] = []
+    retained = transposed.index[~duplicate_mask].tolist()
+    for duplicate in dropped:
+        duplicate_values = transposed.loc[duplicate]
+        original = next(
+            name for name in retained if transposed.loc[name].equals(duplicate_values)
+        )
+        audit_rows.append(
+            {"retained_feature": original, "dropped_duplicate_feature": duplicate}
+        )
+    return (
+        x.drop(columns=dropped),
+        pd.DataFrame(
+            audit_rows,
+            columns=["retained_feature", "dropped_duplicate_feature"],
+        ),
+    )
+
+
+def audit_target_contamination(
+    x: pd.DataFrame,
+    y: pd.DataFrame,
+    *,
+    min_block_positive_f1: float = 0.5,
+    min_block_exact_row_fraction: float = 0.5,
+) -> dict[str, object]:
+    """Detect label-matrix data accidentally embedded in an input feature file.
+
+    The published 827-column V1 artifact contains a contiguous 285-column
+    binary block that tracks the raw 285-label association matrix. Two invalid
+    sequences shifted part of that block relative to the IDs, so checking only
+    for perfectly identical feature/target columns is insufficient. This audit
+    checks both informative exact column copies and label-width contiguous
+    binary blocks with substantial positive overlap and row-wise identity.
+
+    Sequence descriptors can legitimately be binary, so a block is rejected
+    only when both its positive-class F1 and exact-row fraction are high.
+    """
+    if x.shape[0] != y.shape[0]:
+        raise ValueError("X/Y row counts differ during target-contamination audit.")
+    if "sample_id" not in x.columns or "ID" not in y.columns:
+        raise ValueError("Target-contamination audit requires sample_id in X and ID in Y.")
+    if x["sample_id"].astype(str).tolist() != y["ID"].astype(str).tolist():
+        raise ValueError("X/Y IDs are not aligned during target-contamination audit.")
+
+    feature_cols = [column for column in x.columns if column != "sample_id"]
+    label_cols = [column for column in y.columns if column != "ID"]
+    feature_values = x[feature_cols].apply(pd.to_numeric, errors="raise")
+    label_values = y[label_cols].apply(pd.to_numeric, errors="raise")
+    if not label_values.isin([0, 1]).all(axis=None):
+        raise ValueError("Target-contamination audit requires binary labels.")
+
+    binary_mask = feature_values.isin([0, 1]).all(axis=0).to_numpy()
+    binary_feature_cols = [
+        column for column, is_binary in zip(feature_cols, binary_mask) if is_binary
+    ]
+
+    # Constant-zero columns are deliberately ignored: an unused label and a
+    # legitimate all-zero descriptor would otherwise look like an exact copy.
+    informative_labels = [
+        column for column in label_cols if 0 < int(label_values[column].sum()) < len(y)
+    ]
+    exact_copy_pairs: list[tuple[str, str]] = []
+    for feature_column in binary_feature_cols:
+        feature = feature_values[feature_column].to_numpy(dtype=np.uint8)
+        if feature.min() == feature.max():
+            continue
+        for label_column in informative_labels:
+            if np.array_equal(
+                feature,
+                label_values[label_column].to_numpy(dtype=np.uint8),
+            ):
+                exact_copy_pairs.append((feature_column, label_column))
+
+    best_block_positive_f1 = 0.0
+    best_block_exact_row_fraction = 0.0
+    best_block_start = ""
+    label_width = len(label_cols)
+    labels_array = label_values.to_numpy(dtype=np.uint8)
+
+    # Find contiguous binary runs, then test every label-width window. In clean
+    # sequence-only inputs this loop normally has no eligible window.
+    run_start = 0
+    while run_start < len(feature_cols):
+        if not binary_mask[run_start]:
+            run_start += 1
+            continue
+        run_end = run_start
+        while run_end + 1 < len(feature_cols) and binary_mask[run_end + 1]:
+            run_end += 1
+        run_length = run_end - run_start + 1
+        if label_width and run_length >= label_width:
+            for window_start in range(run_start, run_end - label_width + 2):
+                block = feature_values.iloc[
+                    :, window_start : window_start + label_width
+                ].to_numpy(dtype=np.uint8)
+                true_positive = int(np.logical_and(block == 1, labels_array == 1).sum())
+                false_positive = int(np.logical_and(block == 1, labels_array == 0).sum())
+                false_negative = int(np.logical_and(block == 0, labels_array == 1).sum())
+                denominator = 2 * true_positive + false_positive + false_negative
+                positive_f1 = 2 * true_positive / denominator if denominator else 0.0
+                exact_row_fraction = float(np.all(block == labels_array, axis=1).mean())
+                if (
+                    positive_f1 > best_block_positive_f1
+                    or (
+                        positive_f1 == best_block_positive_f1
+                        and exact_row_fraction > best_block_exact_row_fraction
+                    )
+                ):
+                    best_block_positive_f1 = positive_f1
+                    best_block_exact_row_fraction = exact_row_fraction
+                    best_block_start = feature_cols[window_start]
+        run_start = run_end + 1
+
+    suspicious_block = (
+        best_block_positive_f1 >= min_block_positive_f1
+        and best_block_exact_row_fraction >= min_block_exact_row_fraction
+    )
+    return {
+        "flagged": bool(exact_copy_pairs or suspicious_block),
+        "binary_feature_columns": len(binary_feature_cols),
+        "exact_label_copy_count": len(exact_copy_pairs),
+        "exact_label_copy_examples": "|".join(
+            f"{feature}->{label}" for feature, label in exact_copy_pairs[:5]
+        ),
+        "best_label_width_block_start": best_block_start,
+        "best_label_width_block_positive_f1": best_block_positive_f1,
+        "best_label_width_block_exact_row_fraction": best_block_exact_row_fraction,
+    }
+
+
+def assert_no_target_contamination(
+    x: pd.DataFrame,
+    y: pd.DataFrame,
+    *,
+    context: str,
+) -> dict[str, object]:
+    """Run the target audit and fail before writing a contaminated manifest."""
+    audit = audit_target_contamination(x, y)
+    if audit["flagged"]:
+        raise ValueError(
+            f"{context}: feature input appears to contain target-derived data "
+            f"(binary_features={audit['binary_feature_columns']}, "
+            f"exact_label_copies={audit['exact_label_copy_count']}, "
+            f"best_label_width_block_positive_f1="
+            f"{audit['best_label_width_block_positive_f1']:.3f}, "
+            f"best_label_width_block_exact_row_fraction="
+            f"{audit['best_label_width_block_exact_row_fraction']:.3f}). "
+            "Regenerate features from sequences with explicit sample IDs; do not "
+            "remove the suspicious columns and reuse potentially shifted rows."
+        )
+    return audit
+
+
+def filter_aligned_labels(
+    y: pd.DataFrame, min_positives: int, keep_rule: str
+) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
+    """Filter labels using counts from the final aligned, deduplicated samples."""
+    label_cols = [c for c in y.columns if c != "ID"]
+    numeric = y[label_cols].apply(pd.to_numeric, errors="raise")
+    counts = numeric.sum(axis=0)
+    keep_mask = counts > min_positives if keep_rule == "gt" else counts >= min_positives
+    keep = counts.index[keep_mask].tolist()
+    if not keep:
+        raise ValueError(
+            f"No aligned labels survived the filter ({keep_rule} {min_positives})."
+        )
+    dropped = counts.loc[~keep_mask].rename("aligned_positive_count").reset_index()
+    dropped = dropped.rename(columns={"index": "label"})
+    return y[["ID"] + keep].copy(), counts.loc[keep], dropped
 
 
 def make_splits(
@@ -415,6 +715,15 @@ def parse_args() -> argparse.Namespace:
         default=["v1", "v2"],
         help="Dataset versions to prepare.",
     )
+    for version in sorted(VERSION_CONFIG):
+        parser.add_argument(
+            f"--{version}-label-csv",
+            help=f"Override the {version.upper()} label/sequence source CSV.",
+        )
+        parser.add_argument(
+            f"--{version}-feature-dir",
+            help=f"Override the {version.upper()} feature-version directory.",
+        )
     parser.add_argument(
         "--domains",
         nargs="+",
@@ -477,6 +786,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    for version in sorted(VERSION_CONFIG):
+        label_override = getattr(args, f"{version}_label_csv")
+        feature_override = getattr(args, f"{version}_feature_dir")
+        if label_override:
+            VERSION_CONFIG[version]["label_csv"] = Path(label_override)
+        if feature_override:
+            VERSION_CONFIG[version]["version_dirs"] = (feature_override,)
     outdir = PROJECT_ROOT / args.outdir
     outdir.mkdir(parents=True, exist_ok=True)
 
@@ -486,10 +802,12 @@ def main() -> None:
     for version in args.versions:
         cfg = VERSION_CONFIG[version]
         label_csv = PROJECT_ROOT / cfg["label_csv"]
-        filtered_y, kept_counts = filter_labels(
-            label_csv, args.min_positives, args.keep_rule
-        )
-        label_ids_in_order = load_label_csv(label_csv)["ID"].astype(str).tolist()
+        label_source = load_label_source(label_csv)
+        label_ids_in_order = label_source["ID"].astype(str).tolist()
+        sequence_col = "seqs" if "seqs" in label_source.columns else None
+        label_cols = [
+            c for c in label_source.columns if c not in {"ID", "seqs", "seq"}
+        ]
 
         feature_specs, discovered_inventory = discover_feature_specs(version, args.domains)
         inventory_rows.extend(discovered_inventory)
@@ -506,17 +824,44 @@ def main() -> None:
                 feature_specs=feature_specs,
             )
             x = load_feature_representation(specs, feature_set, label_ids_in_order)
-            merged = x.merge(filtered_y, left_on="sample_id", right_on="ID", how="inner")
+            merge_cols = ["ID", *label_cols]
+            if sequence_col:
+                merge_cols.append(sequence_col)
+            merged = x.merge(
+                label_source[merge_cols],
+                left_on="sample_id",
+                right_on="ID",
+                how="inner",
+                validate="one_to_one",
+            )
 
             if merged.empty:
                 raise ValueError(
                     f"No overlapping sample IDs between {feature_set} and {label_csv} for {version}."
                 )
 
-            x_out = merged[x.columns]
-            y_out = merged[["sample_id"] + list(kept_counts.index)].rename(
+            x_aligned = merged[x.columns].copy()
+            y_aligned = merged[["sample_id", *label_cols]].rename(
                 columns={"sample_id": "ID"}
             )
+            sequences = merged[sequence_col] if sequence_col else None
+
+            target_audit = assert_no_target_contamination(
+                x_aligned,
+                y_aligned,
+                context=f"{version}/{feature_set}",
+            )
+
+            x_out, y_out, sequence_audit = collapse_identical_sequences(
+                x_aligned, y_aligned, sequences
+            )
+            x_out, feature_audit = drop_duplicate_feature_columns(x_out)
+            y_out, kept_counts, dropped_labels = filter_aligned_labels(
+                y_out, args.min_positives, args.keep_rule
+            )
+
+            if x_out["sample_id"].astype(str).tolist() != y_out["ID"].astype(str).tolist():
+                raise ValueError(f"{version}/{feature_set}: final X/Y IDs are not aligned.")
 
             feature_key = sanitize_feature_key(feature_set)
             suffix = f"{args.keep_rule}{args.min_positives}"
@@ -524,6 +869,13 @@ def main() -> None:
             y_path = outdir / f"{version}_{feature_key}_Y_{suffix}.csv"
             x_out.to_csv(x_path, index=False)
             y_out.to_csv(y_path, index=False)
+
+            sequence_audit_path = outdir / f"{version}_{feature_key}_duplicate_sequences.csv"
+            feature_audit_path = outdir / f"{version}_{feature_key}_duplicate_features.csv"
+            dropped_labels_path = outdir / f"{version}_{feature_key}_dropped_labels.csv"
+            sequence_audit.to_csv(sequence_audit_path, index=False)
+            feature_audit.to_csv(feature_audit_path, index=False)
+            dropped_labels.to_csv(dropped_labels_path, index=False)
 
             split_path = None
             if not args.no_splits:
@@ -552,6 +904,30 @@ def main() -> None:
                     "median_label_positives": float(kept_counts.median()),
                     "max_label_positives": int(kept_counts.max()),
                     "labels_lt_n_splits": int((kept_counts < args.n_splits).sum()),
+                    "source_samples": int(label_source.shape[0]),
+                    "aligned_samples_before_sequence_dedup": int(x_aligned.shape[0]),
+                    "duplicate_sequence_groups": int(sequence_audit.shape[0]),
+                    "collapsed_duplicate_sequence_rows": int(
+                        sequence_audit["group_size"].sub(1).sum()
+                        if not sequence_audit.empty
+                        else 0
+                    ),
+                    "duplicate_feature_columns_dropped": int(feature_audit.shape[0]),
+                    "binary_feature_columns_audited": int(
+                        target_audit["binary_feature_columns"]
+                    ),
+                    "exact_label_copy_pairs": int(
+                        target_audit["exact_label_copy_count"]
+                    ),
+                    "best_label_width_block_positive_f1": float(
+                        target_audit["best_label_width_block_positive_f1"]
+                    ),
+                    "best_label_width_block_exact_row_fraction": float(
+                        target_audit["best_label_width_block_exact_row_fraction"]
+                    ),
+                    "duplicate_sequence_audit": sequence_audit_path.as_posix(),
+                    "duplicate_feature_audit": feature_audit_path.as_posix(),
+                    "dropped_label_audit": dropped_labels_path.as_posix(),
                     "rflda_command": rflda_cmd,
                     "ipcarf_command": ipcarf_cmd,
                 }

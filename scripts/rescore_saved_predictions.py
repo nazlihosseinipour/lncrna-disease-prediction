@@ -23,8 +23,11 @@ METRICS = ["hamming", "label_ranking", "micro_roc", "micro_auprc",
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--manifest",
-                   default="inductive_inputs/feature_representations/feature_representation_manifest.csv")
+    p.add_argument(
+        "--manifest",
+        required=True,
+        help="Explicit path to the manifest used for the saved predictions.",
+    )
     p.add_argument("--project-dir", default="lncRNA_CIBCB2025-main")
     p.add_argument("--pred-root", default=f"{RESULTS_ROOT}/within_version_cv/predictions")
     p.add_argument("--models", nargs="+", default=["rflda", "ipcarf", "rf"])

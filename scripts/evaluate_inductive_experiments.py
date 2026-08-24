@@ -14,7 +14,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--manifest",
-        default="inductive_inputs/feature_representations/feature_representation_manifest.csv",
+        required=True,
         help="Manifest created by prepare_inductive_feature_representations.py",
     )
     parser.add_argument(
@@ -123,7 +123,7 @@ def main() -> None:
                 print(f"Skipping {y_path.stem} {model_key}: missing prediction files.")
                 continue
 
-            evaluator = Evaluator()
+            evaluator = Evaluator(threshold_mode="fixed")
             perf = []
             for fold in range(1, 11):
                 pred = pd.read_csv(model_dir / pred_pattern.format(fold))

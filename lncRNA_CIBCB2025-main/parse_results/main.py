@@ -41,7 +41,7 @@ for fold in range(1, n_folds + 1):
     test_flat_y = test_flat[fold - 1][1]    
     predictions_flat.columns = test_flat_y.columns
  
-    evaluator = Evaluator()
+    evaluator = Evaluator(threshold_mode="fixed")
     performance_flat.append(evaluator.evaluate(test_flat_y,predictions_flat))
     if not binary_mode:
         predictions_hierarchical = pd.read_csv(path_hierarchical_predictions.replace("fold1", "fold" + str(fold)))    
@@ -61,4 +61,3 @@ if not binary_mode:
 
     df_hierarchical_to_flat = evaluator.create_df_inductive(performance_hierarchical_to_flat)
     df_hierarchical_to_flat.to_csv(path_hierarchical_predictions.split("/")[-1].replace("predictions_test_fold1.csv","")  + "hierarchical_to_flat_performance.csv", index = False)
-

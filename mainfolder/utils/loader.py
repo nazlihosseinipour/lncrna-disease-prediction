@@ -57,6 +57,7 @@ def preprocess_sequences(
     replace_t_with_u: bool = True,
     valid_alphabet: set = set(ALPHABET) | {"N"},
     strict: bool = False,
+    invalid_policy: str = "drop",
 ) -> Tuple[Optional[List[str]], List[str]]:
     """
     Preprocess and validate sequences before feature extraction.
@@ -66,6 +67,9 @@ def preprocess_sequences(
     - Removes or errors on invalid characters
     - Returns (ids2, seqs2)
     """
+    if invalid_policy not in {"drop", "strip"}:
+        raise ValueError("invalid_policy must be 'drop' or 'strip'.")
+
     ids2 = [] if ids is not None else None
     seqs2, dropped = [], []
 
@@ -76,11 +80,18 @@ def preprocess_sequences(
         if replace_t_with_u:
             x = x.replace("T", "U")
 
-        if set(x) - valid_alphabet:
-            dropped.append((ids[i] if ids else i, s))
+        invalid = set(x) - valid_alphabet
+        if invalid:
             if strict:
                 raise ValueError(f"Invalid characters in sequence {ids[i] if ids else i}: {s}")
-            continue
+            if invalid_policy == "strip":
+                x = "".join(ch for ch in x if ch in valid_alphabet)
+                if not x:
+                    dropped.append((ids[i] if ids else i, s))
+                    continue
+            else:
+                dropped.append((ids[i] if ids else i, s))
+                continue
 
         if ids2 is not None:
             ids2.append(ids[i])

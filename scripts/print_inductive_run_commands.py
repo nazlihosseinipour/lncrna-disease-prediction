@@ -15,7 +15,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--manifest",
-        default="inductive_inputs/feature_representations/feature_representation_manifest.csv",
+        required=True,
         help="Manifest created by prepare_inductive_feature_representations.py",
     )
     parser.add_argument(

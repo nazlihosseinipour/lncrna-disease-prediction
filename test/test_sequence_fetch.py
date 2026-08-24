@@ -265,6 +265,31 @@ def test_fetch_sequence_by_id_resolves_symbols_through_ensembl_lookup():
     assert result.resolved_id == resolved_id
 
 
+def test_symbol_lookup_prefers_canonical_transcript_over_genomic_gene_sequence():
+    symbol = "MALAT1"
+    gene_id = "ENSG00000251562"
+    transcript_id = "ENST00000534336"
+    session = FakeSession(
+        {
+            ENSEMBL_LOOKUP.format(symbol=symbol): FakeResponse(
+                json_data={
+                    "id": gene_id,
+                    "object_type": "Gene",
+                    "canonical_transcript": f"{transcript_id}.2",
+                }
+            ),
+            ENSEMBL_SEQ.format(ensembl_id=transcript_id): FakeResponse(text="AUGC"),
+        }
+    )
+
+    result = fetch_sequence_by_id(session, symbol)
+
+    assert result.status == "symbol_canonical_transcript_resolved"
+    assert result.sequence == "AUGC"
+    assert result.resolved_id == transcript_id
+    assert result.detail == f"symbol_lookup:{symbol}->{transcript_id}"
+
+
 def test_fetch_sequence_by_id_treats_ac_style_ids_as_symbol_like():
     symbol_like = "AC002480.5"
     resolved_id = "ENSG00000251562"

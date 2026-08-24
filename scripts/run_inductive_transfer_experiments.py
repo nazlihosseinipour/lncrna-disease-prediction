@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--manifest",
-        default="inductive_inputs/feature_representations/feature_representation_manifest.csv",
+        required=True,
         help="Manifest created by prepare_inductive_feature_representations.py",
     )
     parser.add_argument(
@@ -334,7 +334,7 @@ def evaluate_runs(
 
 def main() -> None:
     args = parse_args()
-    manifest_path = PROJECT_ROOT / args.manifest
+    manifest_path = (PROJECT_ROOT / args.manifest).resolve()
     outdir = PROJECT_ROOT / args.outdir
     project_dir = PROJECT_ROOT / args.project_dir
     outdir.mkdir(parents=True, exist_ok=True)
@@ -491,6 +491,10 @@ def main() -> None:
                     {
                         "source_version": args.source_version,
                         "target_version": args.target_version,
+                        "manifest": manifest_path.as_posix(),
+                        "manifest_sha256": hashlib.sha256(
+                            manifest_path.read_bytes()
+                        ).hexdigest(),
                         "feature_key": feature_key,
                         "model": model_key,
                         "threshold_mode": args.threshold_mode,

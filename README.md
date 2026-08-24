@@ -1,5 +1,24 @@
 # 🧬 RNA Feature Engineering & Encoding Framework
 
+## Upstream research code and attribution
+
+The structured-output prediction implementations under
+[`lncRNA_CIBCB2025-main/`](https://github.com/nazlihosseinipour/lncRNA_CIBCB2025/tree/agent/internship-adaptations)
+are adapted from the [`fkenjinakano/lncRNA_CIBCB2025`](https://github.com/fkenjinakano/lncRNA_CIBCB2025)
+repository developed by F. Kenji Nakano and collaborators.
+
+This project contains local adaptations needed for the internship experiments,
+including fixed-threshold evaluation, robustness fixes for IPCARF and RFLDA,
+and an additional Random Forest baseline. The adaptations are published in
+[`nazlihosseinipour/lncRNA_CIBCB2025`](https://github.com/nazlihosseinipour/lncRNA_CIBCB2025/tree/agent/internship-adaptations)
+on branch `agent/internship-adaptations`, commit `9bfab69`. See
+[`THIRD_PARTY_CODE.md`](THIRD_PARTY_CODE.md) for the exact provenance and
+modification summary.
+
+The experiment scripts intentionally use `lncRNA_CIBCB2025-main/` as their
+default model-code path. That path must contain the adapted fork revision, not
+an unmodified checkout of the upstream repository.
+
 ## 📌 Overview
 
 This repository provides a modular **Object-Oriented Programming (OOP) framework** for **RNA representation learning and feature engineering**.

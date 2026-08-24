@@ -36,12 +36,14 @@ class Evaluator:
                 transductive_mode = False,
                 indexes_to_mask = None,
                 threshold = 0.5,
-                threshold_mode = "youden"):
+                threshold_mode = "fixed"):
 #        self.threshold = threshold
 #        self.threshold = 0.1
-        # threshold_mode: "youden" (legacy default; per-label Youden cut on the test
-        # fold) or "fixed" (use self.threshold for every label). "fixed" avoids the
-        # optimistic test-fit threshold flagged in the leakage audit.
+        # threshold_mode: "fixed" (safe default; use self.threshold for every
+        # label) or "youden" (legacy paper-reproduction mode; per-label cut fit
+        # on the evaluated fold and therefore not valid as a primary estimate).
+        if threshold_mode not in {"fixed", "youden"}:
+            raise ValueError(f"Unsupported threshold mode: {threshold_mode}")
         self.threshold = threshold
         self.threshold_mode = threshold_mode
 
@@ -83,10 +85,17 @@ class Evaluator:
             thresholds = self.sensivity_specifity_cutoff(y_true, y_pred)
         y_pred_thresholded = self._apply_threshold(y_pred, thresholds)
         hamming = hamming_loss(y_true, y_pred_thresholded)
-        label_ranking = label_ranking_loss(y_true, y_pred_thresholded)
+        # Ranking loss must use the continuous scores. Thresholding destroys
+        # ordering information and turns this into a different metric.
+        label_ranking = label_ranking_loss(y_true, y_pred)
         roc = roc_auc_score(y_true, y_pred, average = "micro")
         average_precision = average_precision_score(y_true, y_pred, average="micro")
-        precision, recall, fscore, _ = precision_recall_fscore_support(y_true, y_pred_thresholded, average = "micro")
+        precision, recall, fscore, _ = precision_recall_fscore_support(
+            y_true,
+            y_pred_thresholded,
+            average="micro",
+            zero_division=0,
+        )
         accuracy = accuracy_score(y_true, y_pred_thresholded)
 
         return hamming, label_ranking, roc, average_precision, precision, recall, fscore, accuracy
@@ -97,8 +106,15 @@ class Evaluator:
         y_pred = self._select_indexes_to_evaluate(y_pred)
         y_true = self._select_indexes_to_evaluate(y_true)
         
-        y_pred_thresholded = self._apply_threshold(y_pred)
-        precision, recall, fscore, _ = precision_recall_fscore_support(y_true, y_pred_thresholded, average = "binary")
+        y_pred_thresholded = self._apply_threshold(
+            y_pred, [self.threshold] * y_pred.shape[1]
+        )
+        precision, recall, fscore, _ = precision_recall_fscore_support(
+            y_true,
+            y_pred_thresholded,
+            average="binary",
+            zero_division=0,
+        )
         accuracy = accuracy_score(y_true, y_pred_thresholded)
         auprc = average_precision_score(y_true, y_pred)
         return precision, recall, fscore, accuracy, auprc
@@ -125,10 +141,13 @@ class Evaluator:
         df.insert(0, "folds", self.columns_to_add_df)
         return df
     def create_df_inductive(self,
-                list_performance):
+                list_performance,
+                fold_labels=None):
+        if fold_labels is None:
+            fold_labels = [f"fold{i + 1}" for i in range(len(list_performance))]
         list_performance.append([str(a) + "(" + str(b) + ")" for a,b in zip(np.mean(list_performance, axis=0), np.std(list_performance, axis=0))])
         df = pd.DataFrame(list_performance , columns = self.evaluation_measures_inductive)
-        df.insert(0, "folds", self.columns_to_add_df)
+        df.insert(0, "folds", list(fold_labels) + ["mean(std)"])
         return df
 
     def sensivity_specifity_cutoff(self, y_true, y_score):

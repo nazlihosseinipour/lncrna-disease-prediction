@@ -46,6 +46,12 @@ class CLI:
         rna.add_argument("--no_upper", action="store_true", help="Do not uppercase sequences")
         rna.add_argument("--keep_t", action="store_true", help="Do not convert T->U")
         rna.add_argument("--strict", action="store_true", help="Error on invalid chars instead of dropping")
+        rna.add_argument(
+            "--ambiguous-policy",
+            choices=["strip", "drop"],
+            default="strip",
+            help="Strip ambiguous bases and keep the sample, or drop the entire sequence.",
+        )
         rna.add_argument("--save_clean", help="Optional path to save cleaned sequences as CSV (id,seq)")
 
         rna.add_argument("-o", "--output", help="Path to save output")
@@ -67,6 +73,12 @@ class CLI:
         rna_all.add_argument("--no_upper", action="store_true", help="Do not uppercase sequences")
         rna_all.add_argument("--keep_t", action="store_true", help="Do not convert T->U")
         rna_all.add_argument("--strict", action="store_true", help="Error on invalid chars instead of dropping")
+        rna_all.add_argument(
+            "--ambiguous-policy",
+            choices=["strip", "drop"],
+            default="strip",
+            help="Strip ambiguous bases and keep the sample, or drop the entire sequence.",
+        )
         rna_all.add_argument("--outdir", default="final-output", help="Output directory for all RNA feature CSVs")
 
         #Disease
@@ -166,6 +178,8 @@ class CLI:
                 to_upper=not args.no_upper,
                 replace_t_with_u=not args.keep_t,
                 strict=args.strict,
+                valid_alphabet=set(ALPHABET),
+                invalid_policy=args.ambiguous_policy,
             )
 
             # Save cleaned sequences (optional)
@@ -195,7 +209,16 @@ class CLI:
                 kwargs["props"] = props
 
             obj = FeatureExtractor.run("rna", args.method, seqs2, **kwargs)
-            save_output(obj, args.output)
+            if (
+                isinstance(obj, tuple)
+                and len(obj) == 2
+                and isinstance(obj[1], pd.DataFrame)
+                and args.output
+            ):
+                obj[1].to_csv(args.output, index=False)
+                print(f"[saved] {args.output}", file=sys.stderr)
+            else:
+                save_output(obj, args.output)
 
         #Disease class
         elif args.domain == "disease":
@@ -315,7 +338,8 @@ class CLI:
                         f"sample_ids length ({len(ids)}) != sequences length ({len(seqs)})"
                     )
 
-            # Preprocess (drop invalid chars including N by default)
+            # Classical descriptors require A/C/G/U.  Strip isolated IUPAC
+            # ambiguity codes by default instead of silently dropping a sample.
             ids2, seqs2 = preprocess_sequences(
                 ids,
                 seqs,
@@ -323,6 +347,7 @@ class CLI:
                 replace_t_with_u=not args.keep_t,
                 strict=args.strict,
                 valid_alphabet=set(ALPHABET),
+                invalid_policy=args.ambiguous_policy,
             )
 
             outdir = Path(args.outdir)

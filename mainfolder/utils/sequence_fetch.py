@@ -8,7 +8,10 @@ from urllib.parse import quote
 from mainfolder.utils.sequence_overrides import SequenceOverride
 
 
-ENSEMBL_LOOKUP = "https://rest.ensembl.org/lookup/symbol/homo_sapiens/{symbol}"
+# ``expand=1`` exposes the canonical transcript for gene symbols.  Fetching the
+# bare ENSG sequence returns a genomic region (often hundreds of kilobases), not
+# an RNA transcript, and previously contaminated the sequence feature matrix.
+ENSEMBL_LOOKUP = "https://rest.ensembl.org/lookup/symbol/homo_sapiens/{symbol}?expand=1"
 ENSEMBL_LOOKUP_ID = "https://rest.ensembl.org/lookup/id/{ensembl_id}?expand=1"
 ENSEMBL_XREF = "https://rest.ensembl.org/xrefs/symbol/homo_sapiens/{symbol}"
 ENSEMBL_XREF_NAME = "https://rest.ensembl.org/xrefs/name/homo_sapiens/{symbol}"
@@ -989,23 +992,31 @@ def resolve_symbol(
         resolved_id = str(payload.get("id") or "").strip()
         if not resolved_id:
             return _result(sym, "symbol", status="unresolved", detail="symbol_lookup_missing_id")
-        seq_result = fetch_ensembl_sequence(session, resolved_id, timeout=timeout, query_id=sym)
+        canonical_transcript = strip_safe_version_suffix(
+            str(payload.get("canonical_transcript") or "").strip()
+        )[0]
+        sequence_id = canonical_transcript or resolved_id
+        seq_result = fetch_ensembl_sequence(session, sequence_id, timeout=timeout, query_id=sym)
         if seq_result.sequence:
             return _result(
                 sym,
                 "symbol",
                 sequence=seq_result.sequence,
-                status="symbol_resolved",
-                detail=f"symbol_lookup:{sym}->{resolved_id}",
-                resolved_id=resolved_id,
+                status=(
+                    "symbol_canonical_transcript_resolved"
+                    if canonical_transcript
+                    else "symbol_resolved"
+                ),
+                detail=f"symbol_lookup:{sym}->{sequence_id}",
+                resolved_id=sequence_id,
                 source="lookup_symbol",
             )
         return _result(
             sym,
             "symbol",
             status="unresolved",
-            detail=f"symbol_lookup_resolved:{resolved_id}; {seq_result.detail}",
-            resolved_id=resolved_id,
+            detail=f"symbol_lookup_resolved:{sequence_id}; {seq_result.detail}",
+            resolved_id=sequence_id,
             source="lookup_symbol",
         )
     candidates, notes = _xref_candidates(session, sym, timeout=timeout)

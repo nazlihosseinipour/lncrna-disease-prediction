@@ -22,6 +22,7 @@ cheap validation run; full 10-fold runs belong on the server.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -45,8 +46,11 @@ DISEASE_DIRS = ("disease", "Dis")
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--manifest",
-                   default="inductive_inputs/feature_representations/feature_representation_manifest.csv")
+    p.add_argument(
+        "--manifest",
+        required=True,
+        help="Explicit path to a prepared, contamination-audited feature manifest.",
+    )
     p.add_argument("--project-dir", default="lncRNA_CIBCB2025-main")
     p.add_argument("--models", nargs="+", choices=["rflda", "ipcarf", "rf"],
                    default=["rflda", "ipcarf", "rf"])
@@ -55,7 +59,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n-splits", type=int, default=10)
     p.add_argument("--max-folds", type=int, default=None,
                    help="Cap folds for a cheap validation run.")
-    p.add_argument("--threshold-mode", choices=["youden", "fixed"], default="youden")
+    p.add_argument("--threshold-mode", choices=["youden", "fixed"], default="fixed")
     p.add_argument("--outdir", default=f"{RESULTS_ROOT}/binary_comparison")
     return p.parse_args()
 
@@ -108,6 +112,7 @@ def build_model_factory(model_key: str, disease_similarities):
 
 def main() -> None:
     args = parse_args()
+    manifest_path = (PROJECT_ROOT / args.manifest).resolve()
     project_dir = PROJECT_ROOT / args.project_dir
     outdir = PROJECT_ROOT / args.outdir
     (outdir / "predictions").mkdir(parents=True, exist_ok=True)
@@ -120,7 +125,7 @@ def main() -> None:
     from parse_results.evaluate import Evaluator
     from utils.utils import iterator_cross_validation
 
-    manifest = pd.read_csv(PROJECT_ROOT / args.manifest)
+    manifest = pd.read_csv(manifest_path)
     if args.versions:
         manifest = manifest[manifest["version"].isin(args.versions)]
     if args.feature_keys:
@@ -190,6 +195,8 @@ def main() -> None:
     summary_df.to_csv(summary_path, index=False)
     (outdir / "run_config.json").write_text(json.dumps({
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "manifest": manifest_path.as_posix(),
+        "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
         "mode": "binary", "models": args.models, "versions": args.versions,
         "n_splits": args.n_splits, "max_folds": args.max_folds,
         "threshold_mode": args.threshold_mode, "random_state": 0,

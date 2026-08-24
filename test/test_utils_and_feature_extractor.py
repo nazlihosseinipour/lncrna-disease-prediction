@@ -20,6 +20,19 @@ def test_preprocess_sequences_drops_invalid():
     assert seqs2 == ["AUGC"]
 
 
+def test_preprocess_sequences_can_strip_ambiguous_bases_without_dropping_sample():
+    ids2, seqs2 = preprocess_sequences(
+        ["ambiguous"],
+        ["ACTNRYG"],
+        valid_alphabet={"A", "C", "G", "U"},
+        strict=False,
+        invalid_policy="strip",
+    )
+
+    assert ids2 == ["ambiguous"]
+    assert seqs2 == ["ACUG"]
+
+
 def test_feature_extractor_rna_kmer_dispatch():
     seqs = ["AUGC", "AAAA"]
     cols, rows = FeatureExtractor.run("rna", 1, seqs, k=2, return_format="matrix")
