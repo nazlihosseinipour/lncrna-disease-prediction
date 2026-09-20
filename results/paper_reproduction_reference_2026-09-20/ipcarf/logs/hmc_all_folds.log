@@ -1,0 +1,20 @@
+22:21:14 [INSTR] IPCA grid scores {2: np.float64(-0.2553), 4: np.float64(-0.0611), 8: np.float64(-0.0261), 16: np.float64(-0.0001), 32: np.float64(0.0511), 64: np.float64(0.0658), 128: np.float64(0.0644)}
+22:21:21 inductive_multilabel
+22:22:52 [INSTR] IPCA grid scores {2: np.float64(-0.2165), 4: np.float64(-0.0864), 8: np.float64(-0.0501), 16: np.float64(-0.0257), 32: np.float64(0.0123), 64: np.float64(0.0507), 128: np.float64(0.0444)}
+22:22:58 inductive_multilabel
+22:24:39 [INSTR] IPCA grid scores {2: np.float64(-0.2206), 4: np.float64(-0.0698), 8: np.float64(0.0), 16: np.float64(0.0166), 32: np.float64(0.0573), 64: np.float64(0.0737), 128: np.float64(0.0843)}
+22:24:51 inductive_multilabel
+22:26:27 [INSTR] IPCA grid scores {2: np.float64(-0.2302), 4: np.float64(-0.0831), 8: np.float64(-0.0278), 16: np.float64(0.0041), 32: np.float64(0.0401), 64: np.float64(0.0733), 128: np.float64(0.082)}
+22:26:40 inductive_multilabel
+22:28:05 [INSTR] IPCA grid scores {2: np.float64(-0.2426), 4: np.float64(-0.0173), 8: np.float64(0.001), 16: np.float64(0.0296), 32: np.float64(0.0633), 64: np.float64(0.0769), 128: np.float64(0.0752)}
+22:28:11 inductive_multilabel
+22:29:53 [INSTR] IPCA grid scores {2: np.float64(-0.2375), 4: np.float64(-0.0275), 8: np.float64(0.0073), 16: np.float64(0.016), 32: np.float64(0.0444), 64: np.float64(0.0758), 128: np.float64(0.076)}
+22:30:05 inductive_multilabel
+22:31:52 [INSTR] IPCA grid scores {2: np.float64(-0.2428), 4: np.float64(0.0048), 8: np.float64(0.0253), 16: np.float64(0.0378), 32: np.float64(0.0635), 64: np.float64(0.0927), 128: np.float64(0.1005)}
+22:32:04 inductive_multilabel
+22:33:39 [INSTR] IPCA grid scores {2: np.float64(-0.2524), 4: np.float64(-0.0964), 8: np.float64(-0.0414), 16: np.float64(0.0039), 32: np.float64(0.0428), 64: np.float64(0.076), 128: np.float64(0.0844)}
+22:33:50 inductive_multilabel
+22:35:21 [INSTR] IPCA grid scores {2: np.float64(-0.2687), 4: np.float64(-0.0141), 8: np.float64(-0.007), 16: np.float64(0.0237), 32: np.float64(0.0607), 64: np.float64(0.0765), 128: np.float64(0.0774)}
+22:35:31 inductive_multilabel
+22:37:04 [INSTR] IPCA grid scores {2: np.float64(-0.2238), 4: np.float64(-0.0041), 8: np.float64(0.0383), 16: np.float64(0.0609), 32: np.float64(0.0801), 64: np.float64(0.1008), 128: np.float64(0.0982)}
+22:37:10 inductive_multilabel

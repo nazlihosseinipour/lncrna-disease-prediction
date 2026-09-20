@@ -1,0 +1,25 @@
+variant,metric,ours_mean,ours_std,paper_mean,paper_std,dev_mean,dev_std
+IPCARF (HMC),Hamming,0.0828,0.0245,0.08,0.02,0.0028,0.0045
+IPCARF (HMC),RankingErr,0.2364,0.0661,0.24,0.07,-0.0036,-0.0039
+IPCARF (HMC),AUROC,0.8252,0.0674,0.83,0.07,-0.0048,-0.0026
+IPCARF (HMC),AUPRC,0.4363,0.1259,0.44,0.13,-0.0037,-0.0041
+IPCARF (HMC),Precision,0.3567,0.0786,0.36,0.08,-0.0033,-0.0014
+IPCARF (HMC),Recall,0.7819,0.1254,0.78,0.13,0.0019,-0.0046
+IPCARF (HMC),F,0.4837,0.0822,0.48,0.08,0.0037,0.0022
+IPCARF (HMC),Accuracy,0.1806,0.0828,0.18,0.08,0.0006,0.0028
+IPCARF (MLC),Hamming,0.0835,0.0249,0.08,0.02,0.0035,0.0049
+IPCARF (MLC),RankingErr,0.2448,0.0498,0.24,0.05,0.0048,-0.0002
+IPCARF (MLC),AUROC,0.8231,0.0612,0.82,0.06,0.0031,0.0012
+IPCARF (MLC),AUPRC,0.4398,0.1166,0.44,0.12,-0.0002,-0.0034
+IPCARF (MLC),Precision,0.3562,0.0902,0.36,0.09,-0.0038,0.0002
+IPCARF (MLC),Recall,0.7734,0.1073,0.77,0.11,0.0034,-0.0027
+IPCARF (MLC),F,0.4829,0.0929,0.48,0.09,0.0029,0.0029
+IPCARF (MLC),Accuracy,0.1408,0.0743,0.14,0.07,0.0008,0.0043
+"IPCARF (HMC, all 369 MeSH nodes; not the Table III protocol)",Hamming,0.1028,0.0233,,,,
+"IPCARF (HMC, all 369 MeSH nodes; not the Table III protocol)",RankingErr,0.2586,0.0545,,,,
+"IPCARF (HMC, all 369 MeSH nodes; not the Table III protocol)",AUROC,0.8436,0.0564,,,,
+"IPCARF (HMC, all 369 MeSH nodes; not the Table III protocol)",AUPRC,0.5069,0.1048,,,,
+"IPCARF (HMC, all 369 MeSH nodes; not the Table III protocol)",Precision,0.4059,0.0717,,,,
+"IPCARF (HMC, all 369 MeSH nodes; not the Table III protocol)",Recall,0.7792,0.0897,,,,
+"IPCARF (HMC, all 369 MeSH nodes; not the Table III protocol)",F,0.5288,0.0659,,,,
+"IPCARF (HMC, all 369 MeSH nodes; not the Table III protocol)",Accuracy,0.1128,0.0755,,,,

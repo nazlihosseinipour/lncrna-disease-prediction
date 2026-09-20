@@ -1,0 +1,44 @@
+/Users/nazlihosseinipour/Nazli Second Brain/03 Projects/Internship/lncrna-gip-project/.venv/lib/python3.11/site-packages/sklearn/metrics/_ranking.py:1201: UndefinedMetricWarning: No positive samples in y_true, true positive value should be meaningless
+  warnings.warn(
+/Users/nazlihosseinipour/Nazli Second Brain/03 Projects/Internship/lncrna-gip-project/.venv/lib/python3.11/site-packages/sklearn/metrics/_ranking.py:1201: UndefinedMetricWarning: No positive samples in y_true, true positive value should be meaningless
+  warnings.warn(
+/Users/nazlihosseinipour/Nazli Second Brain/03 Projects/Internship/lncrna-gip-project/.venv/lib/python3.11/site-packages/sklearn/metrics/_ranking.py:1201: UndefinedMetricWarning: No positive samples in y_true, true positive value should be meaningless
+  warnings.warn(
+PASS X/Yflat/Yhier have identical row ids in identical order n=355
+PASS row ids unique 
+PASS no NaN in X/Y 
+PASS all 44 flat columns present in hierarchical columns, identical values 
+PASS fold1: train/test row ids disjoint, union = all 355 train=284 test=71
+PASS fold2: train/test row ids disjoint, union = all 355 train=284 test=71
+PASS fold3: train/test row ids disjoint, union = all 355 train=284 test=71
+PASS fold4: train/test row ids disjoint, union = all 355 train=284 test=71
+PASS fold5: train/test row ids disjoint, union = all 355 train=284 test=71
+PASS every lncRNA is in exactly one test fold 
+PASS splits file has exactly 5 train/test column pairs 
+PASS test folds are pairwise disjoint and cover 0..354 
+PASS splits file identical to a fresh run of make_splits_5fold.py (MultilabelStratifiedKFold(5, shuffle, seed 0) on hierarchical Y) 
+PASS fold sizes balanced (71 test rows each) 
+PASS MLC fold1: predictions shape = (n_test, n_labels), finite, within [0,1] (71, 44)
+PASS MLC fold2: predictions shape = (n_test, n_labels), finite, within [0,1] (71, 44)
+PASS MLC fold3: predictions shape = (n_test, n_labels), finite, within [0,1] (71, 44)
+PASS MLC fold4: predictions shape = (n_test, n_labels), finite, within [0,1] (71, 44)
+PASS MLC fold5: predictions shape = (n_test, n_labels), finite, within [0,1] (71, 44)
+PASS HMC fold1: predictions shape = (n_test, n_labels), finite, within [0,1] (71, 369)
+PASS HMC fold2: predictions shape = (n_test, n_labels), finite, within [0,1] (71, 369)
+PASS HMC fold3: predictions shape = (n_test, n_labels), finite, within [0,1] (71, 369)
+PASS HMC fold4: predictions shape = (n_test, n_labels), finite, within [0,1] (71, 369)
+PASS HMC fold5: predictions shape = (n_test, n_labels), finite, within [0,1] (71, 369)
+PASS fold1: per-label Youden thresholds (44, one per label, from TEST labels) match independent recomputation 
+PASS fold1: thresholds react to the test labels (fitted on test fold) 
+PASS fold1: thresholds differ across labels 31 distinct
+PASS fold1: HMC evaluation uses exactly the 44 flat columns; AUROC/AUPRC match sklearn on those columns 
+PASS fold3: per-label Youden thresholds (44, one per label, from TEST labels) match independent recomputation 
+PASS fold3: thresholds react to the test labels (fitted on test fold) 
+PASS fold3: thresholds differ across labels 31 distinct
+PASS fold3: HMC evaluation uses exactly the 44 flat columns; AUROC/AUPRC match sklearn on those columns 
+PASS fold5: per-label Youden thresholds (44, one per label, from TEST labels) match independent recomputation 
+PASS fold5: thresholds react to the test labels (fitted on test fold) 
+PASS fold5: thresholds differ across labels 22 distinct
+PASS fold5: HMC evaluation uses exactly the 44 flat columns; AUROC/AUPRC match sklearn on those columns 
+
+ALL CHECKS PASSED

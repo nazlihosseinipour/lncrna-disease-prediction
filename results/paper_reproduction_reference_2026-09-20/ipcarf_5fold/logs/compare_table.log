@@ -1,0 +1,20 @@
+                         paper_mean  paper_std  tenfold_mean  tenfold_std  fivefold_mean  fivefold_std  tenfold_absdev  fivefold_absdev closer_to_paper
+variant      metric                                                                                                                                    
+IPCARF (HMC) Hamming           0.08       0.02         0.083        0.024          0.110         0.026           0.003            0.030         10-fold
+             RankingErr        0.24       0.07         0.236        0.066          0.293         0.019           0.004            0.053         10-fold
+             AUROC             0.83       0.07         0.825        0.067          0.832         0.025           0.005            0.002          5-fold
+             AUPRC             0.44       0.13         0.436        0.126          0.431         0.081           0.004            0.009         10-fold
+             Precision         0.36       0.08         0.357        0.079          0.282         0.040           0.003            0.078         10-fold
+             Recall            0.78       0.13         0.782        0.125          0.749         0.055           0.002            0.031         10-fold
+             F                 0.48       0.08         0.484        0.082          0.408         0.042           0.004            0.072         10-fold
+             Accuracy          0.18       0.08         0.181        0.083          0.104         0.067           0.001            0.076         10-fold
+IPCARF (MLC) Hamming           0.08       0.02         0.084        0.025          0.122         0.035           0.004            0.042         10-fold
+             RankingErr        0.24       0.05         0.245        0.050          0.303         0.021           0.005            0.063         10-fold
+             AUROC             0.82       0.06         0.823        0.061          0.821         0.022           0.003            0.001          5-fold
+             AUPRC             0.44       0.12         0.440        0.117          0.427         0.078           0.000            0.013         10-fold
+             Precision         0.36       0.09         0.356        0.090          0.267         0.059           0.004            0.093         10-fold
+             Recall            0.77       0.11         0.773        0.107          0.752         0.043           0.003            0.018         10-fold
+             F                 0.48       0.09         0.483        0.093          0.389         0.062           0.003            0.091         10-fold
+             Accuracy          0.14       0.07         0.141        0.074          0.116         0.078           0.001            0.024         10-fold
+IPCARF (HMC) mean |dev|: 10-fold 0.0030, 5-fold 0.0438 {'10-fold': 7, '5-fold': 1}
+IPCARF (MLC) mean |dev|: 10-fold 0.0028, 5-fold 0.0431 {'10-fold': 7, '5-fold': 1}

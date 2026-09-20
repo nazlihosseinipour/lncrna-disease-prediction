@@ -1,0 +1,5 @@
+,AUROC,AUPRC,F1_fixed0.5,P_youden,R_youden,F1_youden
+prior_only_no_features,0.704,0.112,0.0,0.0,0.0,0.0
+paper_542_block_removed,0.615,0.081,0.022,0.148,0.359,0.198
+paper_827_full__PAPER_REPRODUCTION,0.807,0.411,0.316,0.324,0.751,0.447
+block_only_285,0.82,0.436,0.39,0.444,0.744,0.551
