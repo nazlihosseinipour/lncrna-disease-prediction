@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, average_precision_score
 from sklearn.model_selection import StratifiedKFold
 from utils.transductive_converter import Converter
 class RFLDA:
@@ -22,11 +22,21 @@ class RFLDA:
                 feature_importance = None,
                 binary_mode = False,
                 concatenate_kmers_with_svd = False,
-                transductive_mode = False,
-                indexes_to_mask = None,
-                disease_similarities = None
-                ):
+                 transductive_mode = False,
+                 indexes_to_mask = None,
+                 disease_similarities = None,
+                 n_folds = None,
+                 selection_metric = "micro_auprc",
+                 ):
         self.feature_importance = feature_importance
+        self.n_folds = self.__class__.n_folds if n_folds is None else n_folds
+        if self.n_folds < 2:
+            raise ValueError("RFLDA inner CV requires at least two folds.")
+        if selection_metric not in {"micro_auprc", "subset_accuracy"}:
+            raise ValueError(
+                "selection_metric must be 'micro_auprc' or 'subset_accuracy'."
+            )
+        self.selection_metric = selection_metric
         self.converter = Converter(binary_mode = binary_mode, 
                                    concatenate_kmers_with_svd = concatenate_kmers_with_svd,
                                    transductive_mode = transductive_mode, 
@@ -79,8 +89,8 @@ class RFLDA:
         for cols in intervals:
             top_n_features_x = x.iloc[:, :cols ]
 #            top_n_features_x = top_n_features_x.to_numpy()
-            accuracies_train = []
-            accuracies_test = []
+            scores_train = []
+            scores_test = []
             for train_index, test_index in self.splitter.split(top_n_features_x, y):
                 x_train, x_test = top_n_features_x.iloc[train_index], top_n_features_x.iloc[test_index]
                 y_train, y_test = y.iloc[train_index], y.iloc[test_index]
@@ -94,17 +104,11 @@ class RFLDA:
                 y_train_pred = rf.predict(x_train)
                 y_test_pred = rf.predict(x_test)
 
-                y_train_pred[y_train_pred > self.threshold] = 1    
-                y_train_pred[y_train_pred <= self.threshold] = 0
-
-                y_test_pred[y_test_pred > self.threshold] = 1    
-                y_test_pred[y_test_pred <= self.threshold] = 0
-
-                accuracies_train.append(accuracy_score(y_train, y_train_pred))
-                accuracies_test.append(accuracy_score(y_test, y_test_pred))
+                scores_train.append(self._selection_score(y_train, y_train_pred))
+                scores_test.append(self._selection_score(y_test, y_test_pred))
                 
-            mean_train_accuracy = np.mean(accuracies_train)
-            mean_test_accuracy = np.mean(accuracies_test)
+            mean_train_accuracy = np.mean(scores_train)
+            mean_test_accuracy = np.mean(scores_test)
 
             self.accuracy_train_results.append(mean_train_accuracy)
             self.accuracy_test_results.append(mean_test_accuracy)
@@ -122,15 +126,31 @@ class RFLDA:
 
         best_n_features = self.accuracy_find_best_n.columns[best_performance_n_features_test]
 
-        self.accuracy_find_best_n.insert(0, "subset", ["train_accuracy", "test_accuracy"])
+        metric_label = (
+            "micro_auprc"
+            if self.selection_metric == "micro_auprc"
+            else "subset_accuracy"
+        )
+        self.accuracy_find_best_n.insert(
+            0, "subset", [f"train_{metric_label}", f"validation_{metric_label}"]
+        )
 
         
         return best_n_features
+
+    def _selection_score(self, y_true, y_score):
+        if self.selection_metric == "micro_auprc":
+            return average_precision_score(y_true, y_score, average="micro")
+        y_binary = np.asarray(y_score) > self.threshold
+        return accuracy_score(y_true, y_binary)
     def _find_intervals(self, 
                         x):
         if x.shape[1] < 50:
             return [x.shape[1]]
-        return range(50, x.shape[1] + 1, 50)
+        intervals = list(range(50, x.shape[1] + 1, 50))
+        if intervals[-1] != x.shape[1]:
+            intervals.append(x.shape[1])
+        return intervals
 
     def _rf_max_features(self,
                          n_features):

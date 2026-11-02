@@ -1,0 +1,74 @@
+order,canonical_name,v1_source_columns,v2_source_columns,v1_positives,v2_positives
+0,acute kidney injury,acute kidney injury,Acute Kidney Injury,1,9
+1,acute leukemia,acute leukemia,acute leukemia,1,1
+2,acute myeloid leukemia,acute myeloid leukemia,acute myeloid leukemia,7,4
+3,acute myocardial infarction,acute myocardial infarction,acute myocardial infarction,7,7
+4,acute promyelocytic leukemia,acute promyelocytic leukemia,acute promyelocytic leukemia,3,1
+5,adenocarcinoma,adenocarcinoma,Adenocarcinoma,1,1
+6,adrenocortical carcinoma,adrenocortical carcinoma,Adrenocortical Carcinoma,1,14
+7,aging,aging,Aging,2,2
+8,amyotrophic lateral sclerosis,amyotrophic lateral sclerosis,Amyotrophic Lateral Sclerosis,2,1
+9,asthma,asthma,Asthma,1,10
+10,atherosclerosis,atherosclerosis,Atherosclerosis,5,37
+11,autism spectrum disorder,autism spectrum disorder,Autism Spectrum Disorder,1,1
+12,b cell acute lymphoblastic leukemia,B-cell acute lymphoblastic leukemia,B-cell acute lymphoblastic leukemia,1,1
+13,bipolar disorder,bipolar disorder,Bipolar Disorder,2,5
+14,bladder urothelial carcinoma,bladder urothelial carcinoma,bladder urothelial carcinoma,1,4
+15,burkitt lymphoma,Burkitt lymphoma,Burkitt Lymphoma,2,2
+16,choriocarcinoma,choriocarcinoma,Choriocarcinoma | choriocarcinoma,3,2
+17,coronary artery disease,coronary artery disease,Coronary Artery Disease,2,52
+18,depression,depression,Depression,2,104
+19,dermatomyositis,dermatomyositis,Dermatomyositis,1,1
+20,diabetes mellitus,diabetes mellitus,Diabetes Mellitus,7,24
+21,diabetic retinopathy,diabetic retinopathy,Diabetic Retinopathy,2,13
+22,endometriosis,endometriosis,Endometriosis,2,16
+23,esophageal squamous cell carcinoma,esophageal squamous cell carcinoma,Esophageal Squamous Cell Carcinoma,23,852
+24,ewing sarcoma,Ewing sarcoma,Ewing sarcoma,1,1
+25,gastric adenocarcinoma,gastric adenocarcinoma,gastric adenocarcinoma,2,19
+26,gastric cardia adenocarcinoma,gastric cardia adenocarcinoma,gastric cardia adenocarcinoma,2,4
+27,glaucoma,glaucoma,Glaucoma,1,3
+28,glioblastoma,glioblastoma,Glioblastoma | glioblastoma,7,85
+29,glioma,glioma,Glioma,31,223
+30,head and neck squamous cell carcinoma,head and neck squamous cell carcinoma,head and neck squamous cell carcinoma,2,1
+31,heart failure,heart failure,Heart Failure,10,4
+32,hemangioma,hemangioma,Hemangioma,1,5
+33,hepatoblastoma,hepatoblastoma,Hepatoblastoma,1,14
+34,hiv,HIV,HIV,3,1
+35,idiopathic pulmonary fibrosis,idiopathic pulmonary fibrosis,Idiopathic Pulmonary Fibrosis,0,5
+36,intervertebral disc degeneration,intervertebral disc degeneration,Intervertebral Disc Degeneration,2,7
+37,intracranial aneurysm,intracranial aneurysm,Intracranial Aneurysm,2,1
+38,ischemic stroke,ischemic stroke,Ischemic Stroke,2,23
+39,laryngeal squamous cell carcinoma,laryngeal squamous cell carcinoma,laryngeal squamous cell carcinoma,4,5
+40,leukemia,leukemia,Leukemia,4,6
+41,liver cirrhosis,liver cirrhosis,Liver Cirrhosis,1,5
+42,lung squamous cell carcinoma,lung squamous cell carcinoma,lung squamous cell carcinoma,4,25
+43,medulloblastoma,medulloblastoma,Medulloblastoma,1,6
+44,melanoma,melanoma,Melanoma,14,65
+45,meningioma,meningioma,Meningioma,2,3
+46,multiple myeloma,multiple myeloma,Multiple Myeloma,4,53
+47,multiple sclerosis,multiple sclerosis,Multiple Sclerosis,4,18
+48,myocardial infarction,myocardial infarction,Myocardial Infarction,2,13
+49,nasopharyngeal carcinoma,nasopharyngeal carcinoma,Nasopharyngeal carcinoma,15,95
+50,neuroblastoma,neuroblastoma,Neuroblastoma,11,32
+51,oral squamous cell carcinoma,oral squamous cell carcinoma,oral squamous cell carcinoma,5,1
+52,osteoarthritis,osteoarthritis,Osteoarthritis,6,249
+53,osteosarcoma,osteosarcoma,Osteosarcoma,19,205
+54,pancreatic ductal adenocarcinoma,pancreatic ductal adenocarcinoma,pancreatic ductal adenocarcinoma,12,37
+55,periodontitis,periodontitis,Periodontitis,1,5
+56,pneumonia,pneumonia,Pneumonia | pneumonia,0,3
+57,polycystic ovary syndrome,polycystic ovary syndrome,Polycystic Ovary Syndrome,2,12
+58,pre eclampsia,pre-eclampsia,Pre-Eclampsia,4,12
+59,psoriasis,psoriasis,Psoriasis,1,8
+60,pulmonary arterial hypertension,pulmonary arterial hypertension,Pulmonary Arterial Hypertension,1,8
+61,retinoblastoma,retinoblastoma,Retinoblastoma,2,40
+62,rhabdomyosarcoma,rhabdomyosarcoma,Rhabdomyosarcoma,1,1
+63,schizophrenia,schizophrenia,Schizophrenia,8,1
+64,sepsis,sepsis,Sepsis,1,36
+65,skin melanoma,skin melanoma,skin melanoma,2,5
+66,stroke,stroke,Stroke,2,6
+67,t cell acute lymphoblastic leukemia,T cell acute lymphoblastic leukemia,T-cell acute lymphoblastic leukemia,1,3
+68,testicular germ cell tumor,testicular germ cell tumor,Testicular Germ Cell Tumor,1,1
+69,tongue squamous cell carcinoma,tongue squamous cell carcinoma,tongue squamous cell carcinoma,6,28
+70,urinary bladder,urinary bladder,Urinary Bladder,1,1
+71,uveal melanoma,uveal melanoma,Uveal melanoma,2,6
+72,wilms tumor,Wilms' tumor,Wilms Tumor,4,13

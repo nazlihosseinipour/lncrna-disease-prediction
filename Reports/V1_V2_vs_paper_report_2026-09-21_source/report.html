@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reproducing Table III and comparing V1 and V2</title>
+<style>
+  @page { size: A4; margin: 14mm 14mm 14mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1d232b; font-size: 10pt; line-height: 1.45; margin: 0; }
+  h1 { font-size: 20pt; margin: 0 0 2mm; line-height: 1.15; }
+  .sub { color: #5a6472; margin-bottom: 6mm; font-size: 10pt; }
+  h2 { font-size: 13pt; margin: 6mm 0 2.5mm; padding-bottom: 1mm; border-bottom: 1.5px solid #2f6db5; color: #17335a; break-after: avoid; }
+  h3 { font-size: 10.5pt; margin: 4mm 0 1mm; break-after: avoid; }
+  p { margin: 0 0 2.5mm; }
+  .box { background: #f1f5fb; border-left: 4px solid #2f6db5; padding: 3.5mm 4.5mm; margin: 0 0 4mm; border-radius: 0 3px 3px 0; }
+  .box ul { margin: 1mm 0 0; padding-left: 5mm; }
+  .box li { margin-bottom: 1.2mm; }
+  .note { background: #fdf6ea; border-left: 4px solid #e08a2c; padding: 3mm 4.5mm; margin: 0 0 4mm; border-radius: 0 3px 3px 0; font-size: 9.5pt; }
+  figure { margin: 3mm 0 4mm; break-inside: avoid; text-align: center; }
+  figure img { max-width: 100%; }
+  figcaption { font-size: 8.8pt; color: #5a6472; text-align: left; margin-top: 1mm; }
+  table { border-collapse: collapse; width: 100%; margin: 2mm 0 4mm; font-size: 9pt; break-inside: avoid; }
+  th, td { padding: 1.6mm 2.2mm; text-align: right; border-bottom: 1px solid #dde2ea; }
+  th { background: #eef2f8; text-align: right; font-weight: 600; }
+  th:first-child, td:first-child { text-align: left; }
+  tr.hl td { background: #f4f9f7; font-weight: 600; }
+  .small { font-size: 8.8pt; color: #5a6472; }
+  code { font-family: "SF Mono", Menlo, monospace; font-size: 8.5pt; background: #f0f2f5; padding: 0 1mm; border-radius: 2px; }
+  ol, ul { margin: 0 0 3mm; padding-left: 5.5mm; }
+  li { margin-bottom: 1mm; }
+  .pb { break-before: page; }
+  .foot { margin-top: 8mm; font-size: 8.5pt; color: #6b7482; border-top: 1px solid #dde2ea; padding-top: 2mm; }
+</style>
+</head>
+<body>
+
+<h1>Reproducing Table III, and how our V1 and V2 results compare</h1>
+<div class="sub">Nazli Hosseinipour &middot; 21 September 2026 &middot; supporting material for the discussion of the CIBCB 2025 inductive lncRNA&ndash;disease results</div>
+
+<div class="box">
+<strong>Summary</strong>
+<ul>
+  <li>With the released feature file, labels and splits, and the authors' code and protocol, we reproduce the RFLDA and IPCARF rows of Table III to within 0.005 on nearly every column, and a plain RF gives matching numbers (Section 1).</li>
+  <li>Most of that performance comes from columns 462&ndash;746 of the released feature file. They equal the raw lncRNA&ndash;disease association matrix, and for rows 0&ndash;230 each row holds its own label vector (Section 2). Section IV-B states that such association-based features were excluded, so we would like to understand how these columns were produced.</li>
+  <li>Without those 285 columns, the same pipeline scores AUROC 0.615 and AUPRC 0.081 on the remaining 542 columns, below a baseline that uses no features.</li>
+  <li>On our V2 data (3,849 transcripts, 86 diseases), under the paper's measure and folds, our sequence features reach AUROC 0.827 and AUPRC 0.142. They carry real but small signal above the baseline (Section 3).</li>
+  <li>V2 differs from our V1 mainly because V1 was built on raw counts and V2 on length-normalised frequencies. We found no pipeline defect in V2 (Section 4).</li>
+</ul>
+</div>
+
+<h2>1. The paper's protocol, reproduced on the paper's files</h2>
+<p>Inputs: the released 355&times;827 feature file, the 355&times;44 label matrix (and the MeSH-extended 369-label matrix for HMC), and the released 10 inductive folds. Models: the authors' code with 150 trees, seed 0, 5-fold inner CV for IPCARF components {2&hellip;128} and RFLDA feature counts. Metrics: micro AUROC and AUPRC per fold, then the mean over 10 folds. F-score, precision and recall use the authors' per-label Youden threshold, fitted on each test fold (evaluate.py, commit 73b21ee). For HMC the 369-label predictions are cut to the 44 original diseases before scoring, as in Section III-C.</p>
+<figure>
+  <img src="fig/fig1_reproduction.png" alt="Reproduction versus Table III">
+  <figcaption>Figure 1. Our runs of the authors' code against Table III (mean over 10 folds).</figcaption>
+</figure>
+<table>
+  <tr><th>Model</th><th>AUROC</th><th>AUPRC</th><th>Precision</th><th>Recall</th><th>F</th><th>Paper AUROC / AUPRC / F</th></tr>
+  <tr><td>Plain RF (150 trees)</td><td>0.807</td><td>0.411</td><td>0.324</td><td>0.751</td><td>0.447</td><td>no plain RF row</td></tr>
+  <tr><td>RFLDA (MLC)</td><td>0.811</td><td>0.413</td><td>0.335</td><td>0.748</td><td>0.460</td><td>0.81 / 0.41 / 0.46</td></tr>
+  <tr><td>IPCARF (MLC)</td><td>0.823</td><td>0.440</td><td>0.356</td><td>0.773</td><td>0.483</td><td>0.82 / 0.44 / 0.48</td></tr>
+  <tr><td>IPCARF (HMC)</td><td>0.825</td><td>0.436</td><td>0.357</td><td>0.782</td><td>0.484</td><td>0.83 / 0.44 / 0.48</td></tr>
+</table>
+<p class="small">The largest deviation is RFLDA (MLC) accuracy, 0.138 against 0.17. An independent recomputation from the saved predictions agreed to 0.00005; three IPCARF folds refit from scratch gave identical predictions. Changing the seed to 1 moves MLC AUPRC to 0.424, so agreement at the 0.005 level does not by itself pin down the exact protocol.</p>
+
+<h2>2. Where the performance comes from</h2>
+<p>The released file has 827 columns. Columns 462&ndash;746 are 285 binary columns whose total is 1,132, the number of positive associations in the raw 355&times;285 matrix (<code>raw_data/sequences.csv</code>) and in Table I. They match that matrix's disease columns in order. For rows 0&ndash;230 (231 of 231 rows) the block is exactly the row's own disease-association vector; for later rows it is shifted by one or two positions, at the two lncRNAs missing from the 353-row sequence set. Anyone can check this with <code>leak_check.py</code>, which uses only the released files.</p>
+<figure>
+  <img src="fig/fig2_block.png" alt="Feature file layout and effect of the block">
+  <figcaption>Figure 2. Layout of the released feature file, and RF performance with the block, on the block alone, without it, and for a baseline using no features (train prevalence per label). Same labels, folds, and Youden threshold as in Section 1.</figcaption>
+</figure>
+<div class="note">Section IV-B says functional and Gaussian-kernel lncRNA similarities were not used because they rely on the association matrix, and that the 827 features are Pse-in-One sequence features. The released file contradicts that description for 285 columns. We do not know whether this is a file-building slip; this is the question we would like to put to you.</div>
+<p>Two further points affect how the numbers read. F, precision and recall use a threshold fitted on the labels of the fold being scored, so they are in-sample; with a fixed 0.5 cut-off the same model scores F 0.316. And micro AUROC largely reflects label frequency: a predictor that outputs only each label's training prevalence scores 0.704 on the paper's 44 labels.</p>
+
+<h2>3. V2 under the paper's rules</h2>
+<p>V2 has 3,849 transcripts and 86 diseases (at least 10 positives each), built from LncRNADisease records and the sequences we could retrieve. We used the paper's measure and folds: 10-fold inductive, micro metrics per fold, Youden threshold on the test fold, 150 trees. Features are our 583 sequence features (k-mer, reverse-complement k-mer, k-gap, Z-curve), length-normalised.</p>
+<figure>
+  <img src="fig/fig3_v2.png" alt="V2 results against baseline and paper">
+  <figcaption>Figure 3. V2 with the default fully grown RF, and with the leaf size chosen by out-of-bag score inside each training fold (no test-fold tuning), against the no-feature baseline and the paper.</figcaption>
+</figure>
+<table>
+  <tr><th>V2 model</th><th>AUROC</th><th>AUPRC</th><th>Youden F</th><th>Macro AUROC</th><th>Shuffle test p</th></tr>
+  <tr><td>Default RF (fully grown trees)</td><td>0.785</td><td>0.099</td><td>0.119</td><td>0.531</td><td>0.008</td></tr>
+  <tr class="hl"><td>RF, leaf size by out-of-bag score</td><td>0.827</td><td>0.142</td><td>0.108</td><td>0.577</td><td>0.002</td></tr>
+  <tr><td>No-feature baseline</td><td>0.818</td><td>0.110</td><td>0</td><td>0.500</td><td>&ndash;</td></tr>
+  <tr><td>Paper (with the 285-column block)</td><td>0.81</td><td>0.41</td><td>0.46</td><td>&ndash;</td><td>&ndash;</td></tr>
+</table>
+<h3>Why V2's AUPRC and F are lower than the paper's</h3>
+<ul>
+  <li>The paper's AUPRC and F include the association block. Without it, the paper's own file scores AUPRC 0.081, below its baseline of 0.112.</li>
+  <li>V2 is sparser. Only 2.4% of its label cells are positive, against about 5% for the paper's 44 labels (Figure 4). AUPRC and F fall with sparsity even for an equally good model.</li>
+  <li>V2's micro AUROC (0.827) is above the paper's 0.81, but its no-feature baseline is already 0.818. Micro AUROC mostly measures how unevenly labels are distributed.</li>
+  <li>Against its own baseline, V2's sequence features do add signal: AUPRC 0.142 against 0.110, macro AUROC 0.577 (p = 0.002). The 542 non-block columns of the paper's file do not beat their baseline.</li>
+</ul>
+<figure>
+  <img style="width:92%" src="fig/fig4_density.png" alt="Label density and baseline AUROC">
+  <figcaption>Figure 4. As labels get sparser, the no-feature baseline's micro AUROC rises (right) while chance-level AUPRC falls.</figcaption>
+</figure>
+
+<h2>4. V1 against V2</h2>
+<p>V2 has about ten times more rows than V1 and 86 rather than 24 labels, so we expected it to score higher. It scores higher on micro AUROC only. We checked for a defect and found none: appending a copy of the labels to the features scores 0.974 micro AUROC through the V2 pipeline, shuffling the labels drops macro AUROC to chance, the row chain from the raw records (25,440 rows &rarr; 3,849) reproduces, and no test transcript shares a gene with a training transcript. Three differences explain the rest.</p>
+<ol>
+  <li><strong>Feature scale.</strong> V1's features are raw k-mer counts, so they encode transcript length. V2's are length-normalised frequencies. Re-running V1 on frequencies drops its macro AUROC from 0.553 to 0.441, below chance (Figure 5). V1's above-chance score was mostly length.</li>
+  <li><strong>Label sparsity.</strong> The baseline's micro AUROC is 0.664 for V1 and 0.818 for V2, so V2's higher micro AUROC (0.785 against 0.641 with the same default RF) is a property of the labels, not of the model.</li>
+  <li><strong>Default RF.</strong> Fully grown trees on sparse labels over-fit. Choosing the leaf size by out-of-bag score inside each training fold moves V2 from 0.785 to 0.827 micro AUROC and from 0.531 to 0.577 macro AUROC.</li>
+</ol>
+<figure>
+  <img style="width:76%" src="fig/fig5_macro.png" alt="Macro AUROC for V1 and V2">
+  <figcaption>Figure 5. Per-label signal. Bars are means over 10 folds, whiskers one standard deviation. p-values are from 500 within-fold label shuffles.</figcaption>
+</figure>
+<table>
+  <tr><th>10 folds, hyperparameters chosen without test folds</th><th>Micro AUROC (baseline)</th><th>AUPRC skill</th><th>Macro AUROC</th><th>p</th></tr>
+  <tr><td>V1, raw counts (original V1)</td><td>0.657 (0.664)</td><td>+0.028</td><td>0.556</td><td>0.040</td></tr>
+  <tr><td>V1, length-normalised</td><td>0.559 (0.664)</td><td>&minus;0.030</td><td>0.441</td><td>0.98</td></tr>
+  <tr class="hl"><td>V2, length-normalised</td><td>0.827 (0.818)</td><td>+0.036</td><td>0.577</td><td>0.002</td></tr>
+</table>
+<p class="small">AUPRC skill = (AUPRC &minus; baseline AUPRC) / (1 &minus; baseline AUPRC).</p>
+<p>On matched, length-normalised features V2 is clearly ahead of V1. Against V1 with raw counts, V2's macro AUROC (0.577 against 0.556) is within one standard deviation. The fair summary is that V2 is modestly better and its signal is more statistically solid, not that it is many times better.</p>
+<figure>
+  <img style="width:74%" src="fig/fig6_learning.png" alt="V2 learning curve">
+  <figcaption>Figure 6. More training rows help V2 a little. The gap between the RF and the no-feature baseline narrows from &minus;0.040 at 353 rows to &minus;0.021 at 3,467 rows (fold 1, default RF).</figcaption>
+</figure>
+
+<h2>5. What is and is not the same as the paper</h2>
+<table>
+  <tr><th>Item</th><th style="text-align:left">Status</th></tr>
+  <tr><td>Folds, measure, threshold rule, 150 trees, seed</td><td style="text-align:left">Same as the paper (10-fold inductive, micro per fold, Youden on test fold).</td></tr>
+  <tr><td>Section 1 models</td><td style="text-align:left">Authors' own code, committed IPCARF/RFLDA, paper hyperparameters.</td></tr>
+  <tr><td>Features for V2</td><td style="text-align:left">Not the paper's. The eight Pse-in-One families cannot be rebuilt: the released file has numeric column names and no configuration.</td></tr>
+  <tr><td>285-column block for V2</td><td style="text-align:left">Not built. It would mean copying each transcript's own labels into its features.</td></tr>
+  <tr><td>IPCARF / RFLDA on V2</td><td style="text-align:left">Not run. The V2 numbers are plain RF.</td></tr>
+  <tr><td>Labels</td><td style="text-align:left">V2 has 86 diseases and 3,849 transcripts; the paper has 44 and 355. V1 has 24 diseases and 353 lncRNAs.</td></tr>
+</table>
+
+<h2>6. Limits and open items</h2>
+<ul>
+  <li>The shipped fold file is not reproduced by the authors' split generator (0 of 10 test folds match), so our 5-fold variant of the IPCARF runs (mean deviation 0.044 from the paper, against 0.003 for 10 folds) mixes fold count with a different stratifier run. The paper reports averages over 10 folds.</li>
+  <li>The V2 result with out-of-bag hyperparameter selection is not yet confirmed by nested cross-validation, and the V2 count-feature comparison is unfinished.</li>
+  <li>We cannot verify that the published numbers came from exactly this feature file. The evidence is 827 = 542 + 285, the block sum of 1,132 matching Table I, and precision, recall and F reproducing to two decimals.</li>
+  <li>Library versions differ from the authors' (scikit-learn 1.7.2 against 1.5.1); we saw no effect.</li>
+</ul>
+
+<h2>7. Questions</h2>
+<ol>
+  <li>How should columns 462&ndash;746 of <code>features_preprocessed.csv</code> be read, given Section IV-B? Could you share the script that built the file?</li>
+  <li>Could you share the Pse-in-One configuration for the eight feature families, so we can build the paper's features for V2?</li>
+  <li>Were the reported results produced with this file and the released <code>inductive_splits.csv</code>?</li>
+</ol>
+
+<h2 class="pb">Appendix. Fold count for IPCARF</h2>
+<table>
+  <tr><th>Variant / metric</th><th>Paper</th><th>10 folds</th><th>5 folds</th></tr>
+  <tr><td>IPCARF (HMC) AUROC</td><td>0.83</td><td>0.825</td><td>0.832</td></tr>
+  <tr><td>IPCARF (HMC) AUPRC</td><td>0.44</td><td>0.436</td><td>0.431</td></tr>
+  <tr><td>IPCARF (HMC) Precision</td><td>0.36</td><td>0.357</td><td>0.282</td></tr>
+  <tr><td>IPCARF (HMC) F</td><td>0.48</td><td>0.484</td><td>0.408</td></tr>
+  <tr><td>IPCARF (MLC) AUROC</td><td>0.82</td><td>0.823</td><td>0.821</td></tr>
+  <tr><td>IPCARF (MLC) Precision</td><td>0.36</td><td>0.356</td><td>0.267</td></tr>
+  <tr><td>IPCARF (MLC) F</td><td>0.48</td><td>0.483</td><td>0.389</td></tr>
+</table>
+<p class="small">AUROC and AUPRC barely change with fold count; the threshold-based metrics do, because each test fold is larger and the Youden threshold is fitted on it.</p>
+
+<h2>Appendix. Files</h2>
+<ul class="small">
+  <li><code>scripts/reproduce_paper_reference.py</code>: plain RF on the released files.</li>
+  <li><code>results/paper_reproduction_reference_2026-09-20/ipcarf/</code>: IPCARF (MLC, HMC), 10 folds, with <code>FIDELITY.md</code>.</li>
+  <li><code>results/paper_reproduction_reference_2026-09-20/table3_other_rows/</code>: RFLDA (MLC).</li>
+  <li><code>results/paper_reproduction_reference_2026-09-20/leak_check.py</code>: the check in Section 2.</li>
+  <li><code>results/paper_measure_v1_v2_2026-09-21/</code> and <code>results/fair_v1_v2_nested_2026-09-21/</code>: V1 and V2 tables.</li>
+</ul>
+
+<div class="foot">All paper-protocol numbers in Sections 1&ndash;2 use the released feature file, which includes the 285-column association block, and a threshold fitted on the scored fold. They are references for reproducing Table III, not estimates of inductive performance.</div>
+</body>
+</html>

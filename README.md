@@ -72,6 +72,47 @@ Notes:
 - Large raw inputs and generated outputs are not pushed to git. Drop your copies into `Data/raw` and rerun the `Data/processed/*.py` helpers to rebuild `Data/output_data`.
 - `run_all_rna_features.py` writes per-method outputs into `final-output/` (created automatically).
 
+### Felipe-compatible V1 sequence features
+
+Use the explicit `paper_sequence_542` contract for the reproducible sequence
+portion of Felipe's released input:
+
+```bash
+PYTHONPATH=. python pipelines/run_all_rna_features.py \
+  --seqs_csv Data/raw/sequences.csv \
+  --outdir results/paper-sequence-features \
+  --version_name V1 \
+  --feature_set paper_sequence_542
+```
+
+This mode preserves all 355 V1 rows, removes unsupported symbols while recording
+them in a metadata sidecar, and produces 462 Pse-in-One DCC columns plus 16
+normalized 2-mer and 64 normalized 3-mer columns. It uses
+`config/pse_in_one_rna_dcc_properties.csv` by default and rejects
+`--no_normalize` or a property table that is not 16×22.
+
+The resulting 542 columns are the complete sequence-reconstructible portion of
+the released 827-column artifact. The remaining 285 binary columns have no
+documented generation procedure and are not synthesized by this mode.
+
+### Felipe's full released 827-feature V1 input
+
+For an exact V1 paper comparison, the pipeline can validate the V1 population
+and expose Felipe's released 827-column artifact directly:
+
+```bash
+PYTHONPATH=. python pipelines/run_all_rna_features.py \
+  --seqs_csv Data/raw/sequences.csv \
+  --outdir results/felipe-released-features \
+  --version_name V1 \
+  --feature_set felipe_released_827
+```
+
+This mode requires the exact 355 V1 RNA IDs and order, verifies the released
+artifact by SHA-256, and copies it byte for byte with a provenance metadata
+sidecar. The metadata identifies all 827 columns as imported from the release;
+it does not describe the unresolved 285-column block as sequence-generated.
+
 ---
 
 ## 🔑 Design Philosophy

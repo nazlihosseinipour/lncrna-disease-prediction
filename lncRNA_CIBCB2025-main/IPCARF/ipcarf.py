@@ -3,6 +3,7 @@ from sklearn.decomposition import IncrementalPCA, PCA
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
+from sklearn.preprocessing import StandardScaler
 from utils.transductive_converter import Converter
 import pandas as pd
 class IPCARF:
@@ -17,11 +18,15 @@ class IPCARF:
                 n_components = None,
                 binary_mode = False,
                 concatenate_kmers_with_svd = False,
-                transductive_mode = False,
-                indexes_to_mask = None,
-                disease_similarities = None
-                ):
+                 transductive_mode = False,
+                 indexes_to_mask = None,
+                 disease_similarities = None,
+                 standardize = True,
+                 allow_pca_fallback = True,
+                 ):
         self.n_components = n_components
+        self.standardize = standardize
+        self.allow_pca_fallback = allow_pca_fallback
         self.ipcarf = None
         self.converter = Converter(binary_mode = binary_mode, 
                                    concatenate_kmers_with_svd = concatenate_kmers_with_svd,
@@ -63,7 +68,7 @@ class IPCARF:
                                 y):
         component_grid = self._valid_component_grid(x)
         rf = RandomForestRegressor(n_estimators=self.n_estimators, n_jobs = self.n_jobs, random_state = self.random_state)
-        pipe = Pipeline(steps=[("pca", IncrementalPCA()), ("rf", rf)])
+        pipe = self._build_pipeline(IncrementalPCA(), rf)
         param_grid = {
         "pca__n_components": component_grid,
         }
@@ -79,13 +84,14 @@ class IPCARF:
                     y)
             return opt.best_params_["pca__n_components"]
         except Exception:
+            if not self.allow_pca_fallback:
+                raise
             # IncrementalPCA can fail with "SVD did not converge" on the expanded
             # binary design matrix. Randomized PCA is more robust and preserves the
             # IPCA->RF structure closely enough for the server sweep to continue.
-            pipe = Pipeline(steps=[
-                ("pca", PCA(svd_solver="randomized", random_state=self.random_state)),
-                ("rf", rf),
-            ])
+            pipe = self._build_pipeline(
+                PCA(svd_solver="randomized", random_state=self.random_state), rf
+            )
             opt = GridSearchCV(
                 pipe,
                 param_grid,
@@ -98,20 +104,31 @@ class IPCARF:
 
     def _fit_pipeline_with_pca_fallback(self, x, y, rf):
         try:
-            pipe = Pipeline(steps=[("pca", IncrementalPCA(n_components=self.n_components)), ("rf", rf)])
+            pipe = self._build_pipeline(
+                IncrementalPCA(n_components=self.n_components), rf
+            )
             pipe.fit(x, y)
             return pipe
         except Exception:
-            pipe = Pipeline(steps=[
-                ("pca", PCA(
+            if not self.allow_pca_fallback:
+                raise
+            pipe = self._build_pipeline(
+                PCA(
                     n_components=self.n_components,
                     svd_solver="randomized",
                     random_state=self.random_state,
-                )),
-                ("rf", rf),
-            ])
+                ),
+                rf,
+            )
             pipe.fit(x, y)
             return pipe
+
+    def _build_pipeline(self, pca, rf):
+        steps = []
+        if self.standardize:
+            steps.append(("scale", StandardScaler()))
+        steps.extend([("pca", pca), ("rf", rf)])
+        return Pipeline(steps=steps)
 
     def _valid_component_grid(self, x):
         limit = max(1, min(x.shape[0], x.shape[1]))

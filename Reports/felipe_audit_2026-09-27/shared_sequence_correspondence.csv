@@ -1,0 +1,49 @@
+sequence_sha256,sequence_length,v1_id,v1_x_row_index,v2_ids,n_v2_ids,v2_x_row_indices,status,same_id_v1_v2,features_v1_equal_v2,features_equal_reconstruction,v1_ambiguity_removed,v2_ambiguity_removed,n_v2_label_conflicts,v2_conflict_diseases,n_v1_v2_label_disagreements_primary,in_primary,in_sensitivity
+0066a88a84fd4ec975415ff6ba6af6f9f29271d09b3d592fc02e2eae045d682c,2251,NR_102735,192,LncDBH-AS1,1,2415,one_to_one,False,True,True,,,0,,0,True,True
+01a8c328947b2c99e76dd7049bf521975af1e776863fa0ae170543b53bfb72bb,37027,NR_003255,330,TSIX-201,1,3780,one_to_one,False,True,True,,,0,,0,True,True
+086bc857e456a29177b6bce007d255f7648422b925a86708cc2b0d76e680237c,2346,NR_036473,245,SNGH3,1,3500,one_to_one,False,True,True,,,0,,0,True,True
+08ba5870a3434d1d8ef070a2bfa80e0fef1dc96671f56e54bf6fa4f6ac5ffdf6,1965,NR_049793,52,LOC100130476,1,1905,one_to_one,False,True,True,,,0,,1,True,True
+0c1be35c8280ce56ac585d822077e6a0838036a97b6755dc4b994ee1e75af22e,22743,NR_131012,283,NEAT1,1,2659,one_to_one,False,True,True,,,0,,30,True,True
+1058598ecd3e27ae524393ad34c87ba2ea4ce74a154369cbb7283d6e85a307b0,299,NR_002715,258,RN7SL1,1,3219,one_to_one,False,True,True,,,0,,1,True,True
+1528a9626b2a438b840803f6f8b731e95b5fbd0a0e56bec684e562668d4c78fd,1197,NR_024015,22,NR_024015,1,2887,one_to_one,True,True,True,,,0,,2,True,True
+18430b28c9be369e630327911378f8bf0613c89ca8ea469849572873e771eccc,697,NR_102762,333,CTC-338M12.3,1,644,one_to_one,False,True,True,,,0,,0,True,True
+24adbd772db4ad0d79ac764d57b8f23735f3652a0b34d24afbeb5f031a8073eb,2502,NR_131782,44,lncRNA-CCHE1,1,4077,one_to_one,False,True,True,,,0,,0,True,True
+2770b3297e79495cf67c907159d8c08c80187d230c3e21b56ac579a5e5ea4c0b,451,NR_001566,304,TERC,1,3686,one_to_one,False,True,True,,,0,,3,True,True
+29de3f5864dc88eec32ba697fd8f55bfafb575c559d7cffa96037de7641473a4,1506,NR_109836,45,PANDAR,1,2948,one_to_one,False,True,True,,,0,,5,True,True
+2f3517d729c74eb20d9638301fac54d02fe85cb0e130d4c3832484fe74480b01,6810,NR_026892,272,AFAP1‐AS1,1,180,one_to_one,False,True,True,,,0,,3,True,True
+2ffde0951b221af595cdc4212e5ff6889deaad40a1a549eedfe48f685ceba3db,2200,NR_147201,299,LINC01852-201,1,1766,one_to_one,False,True,True,,,0,,0,True,True
+32eda8014ce292e66cb82f4054111d45bbd9260ff3158ad30a0c2c52e3646355,4498,NR_023915,142,IPW,1,1303,one_to_one,False,True,True,,,0,,0,True,True
+37e1cf382b25e2cc6c743dde247bf9589dc3c389fea9cfe43cfa5c998e9420cf,1179,NR_002765,120,ASAP1-IT1 | ASAP1‑IT1,2,340 | 341,ambiguous_multi_v2_id,False,True,True,,,1,esophageal squamous cell carcinoma,1,False,True
+38033c261702de69496515ab7ba1ac5d8e6ccc545f40347e419ab64043cb1a9d,453,NR_132442,248,LUADT1,1,2385,one_to_one,False,True,True,,,0,,2,True,True
+40561cd0fb9fa1e448e23f63c5177aede4529911a1272cdafacb69bec8f64b61,2597,NR_147034,295,LINC01617,1,1739,one_to_one,False,True,True,,,0,,0,True,True
+414674d3806fc7040aa95aa01bc09da62eb2e507156d3f68df1f05284efed3d9,3842,NR_033374,114,LOC100289019,1,1919,one_to_one,False,True,True,,,0,,0,True,True
+4674add7d8714b3f8d3dfb5b6944ef8955d1a61e70241469f3e1898975184d08,652,NR_047116,161,HIF1A-AS1,1,1192,one_to_one,False,True,True,,,0,,1,True,True
+4ab0e6346a98b955d3d16891d9ddd26375e044be8a19eb856798d27cff13d884,1436,NR_104319,275,SCHLAP1,1,3389,one_to_one,False,True,True,,,0,,1,True,True
+5d7347d18d2734a6b14e7d0907aca7a5b72695ac81dfbb74d80ed331690439af,3892,NR_002227,137,DISC2,1,722,one_to_one,False,True,True,,,0,,3,True,True
+635c6367b7d51bce5ec8794e8da59ca3a091572289fd6dc33aeb29daa8d1565a,793,NR_125801,157,lncRNA-PACER,1,4086,one_to_one,False,True,True,,,0,,2,True,True
+665a16a422e715020a43d0dcc030791ed569ee9a28f9df85c3fddd4dd7e0e63c,2647,NR_145480,11,LSINCT5,1,2383,one_to_one,False,True,True,,,0,,2,True,True
+6936ce11b07a61882699eedcbfe1d4afe1297c814138a52401a3e1699b705f50,688,NR_047671,113,lncRNA-BANCR,1,4075,one_to_one,False,True,True,,,0,,3,True,True
+74c87126a49ba304a91a2a537d64b575079d575e42e767b0bf5b0b6640207e23,200,NR_001568,290,BCYRN1,1,390,one_to_one,False,True,True,,,0,,3,True,True
+826edefa6d2b4e02c2c42fec646cf9b4e3d0d5d84cfae95de66cdf18dc414fe1,2051,NR_045406,352,HIF1A-AS2 | LINLK-A,2,1193 | 1860,ambiguous_multi_v2_id,False,True,True,,,3,coronary artery disease | endometriosis | osteosarcoma,5,False,True
+829e0ca5f72375e8aab095b8fc49135dad47faca52fbb9c63556eb1c5e22a58c,3123,NR_038834,328,SMIM31,1,3492,one_to_one,False,True,True,,,0,,0,True,True
+8a9f0da3febaa577295e43a8aa1971533eb88cd0d5f25ef4332913d392e32e7d,1752,NR_109834,152,CCAT2,1,503,one_to_one,False,True,True,,,0,,5,True,True
+903dc3e295c9b58551cbab4e794c12e7a19453f545d46b8b75f07b02af12ac7e,4443,NR_046507,55,PINK1-AS,1,3025,one_to_one,False,True,True,,,0,,2,True,True
+a1654ee761f14f07248b8a8c481beb7c4dceafaeb6ee225bb01bf4fd7973cb3d,4320,NR_022006,31,AC004947.2,1,28,one_to_one,False,True,True,,,0,,0,True,True
+aae5f2929d21e2c4c364ad35acef8cad030a0b1a8b3fa4c613098dcf343faf19,3888,NR_028137,54,lncRNASLC26A4‐AS1,1,4096,one_to_one,False,True,True,,,0,,0,True,True
+b38bdbf702604652f1bfd6b2b4edbc9f89887f8eb2ee5d47d4ba3329c8052412,590,NR_109828,92,PCBP2-OT1,1,2980,one_to_one,False,True,True,,,0,,1,True,True
+c373ad32e10f1e96b0c65eca371a42ecf38ed8846c6dedc1320c1962e48128b4,1992,NR_045262,37,MER11C,1,2488,one_to_one,False,True,True,,,0,,1,True,True
+c45800350214fc292692de8af128b8f70e48aa2da279273e0cb2e7636fe44f68,3910,NR_026597,62,DIRC3 | DIRC3-204,2,718 | 719,ambiguous_multi_v2_id,False,True,True,,,1,melanoma,1,False,True
+c52efdcd1cad90b791f7d0eff56bb97fe81128929bd7cf79d56c03ba4e1df76e,486,NR_028375,306,ncRuPAR,1,4120,one_to_one,False,True,True,,,0,,0,True,True
+d67ca5563d9640b3593a9041767dbed576f223dd5fbf9a6fb5474c8b008e7d4d,3886,NR_104331,88,CTBP1-AS,1,640,one_to_one,False,True,True,,,0,,2,True,True
+d93f32f3fb1a75e611d5997fa39f756940d072f9f74946e291c25ca72abf4e4d,1662,NR_037806,112,NPPA-AS1,1,2873,one_to_one,False,True,True,,,0,,0,True,True
+de51b5b348e37768b0500cadaa37a932c3c2288c8442fd189aaeef2ec1158cd5,1540,NR_015407,349,Linc-A,1,2398,one_to_one,False,True,True,,,0,,0,True,True
+e42b5d90567dce44a16bee5ef73ae87e25bf561e47f0bc50d2b0ceeb9301efd1,1581,NR_024458,243,TPT1‑AS1,1,3762,one_to_one,False,True,True,,,0,,1,True,True
+e6a92591d848392e84a6cd8d6ae43efd587e2358b8779484dd983dd241019b77,384,NR_028370,323,PCNA-AS1,1,2993,one_to_one,False,True,True,,,0,,2,True,True
+f058d1c49b5ce76d861e599a72a39f6b37373a20e8d4c71b687ad1a5e1cdea5d,2141,NR_038442,195,LINC00974,1,1589,one_to_one,False,True,True,,,0,,0,True,True
+f37035e7804b98dd90f7db6a1353c6c22fe1f7ec898fe514c503aaabc5859131,2314,NR_015379,343,UCA1a,1,3821,one_to_one,False,True,True,,,0,,9,True,True
+f67295ffa6a2c0da68736941f665533f084c323ca9ed1d5be3a6959469290e18,876,NR_126491,205,MHRT,1,2500,one_to_one,False,True,True,,,0,,2,True,True
+f7135aa8c924556fea05365a015cdc3ed96abc8da73c0cf964896ed8d723e192,319,NR_125795,210,FOXC2-AC1,1,1032,one_to_one,False,True,True,,,0,,1,True,True
+f8422b00b021a41f97b43f1e880bc814060e7881e904aeb1b7265e740e64d0d7,2653,NR_036484,218,FEZF1-AS1,1,1005,one_to_one,False,True,True,,,0,,4,True,True
+f8b11973122f07defafc23c4622816ceb510e382a6e2a2e409fa227f26eb1682,2306,NR_002763,28,CPS1-IT1,1,620,one_to_one,False,True,True,,,0,,1,True,True
+fbc52891d5d182fec5872f786107b408dab79fe7bd2ced2f8ad7972a8fbedf75,1788,NR_102763,18,GATA6-AS,1,1093,one_to_one,False,True,True,,,0,,1,True,True
+fd6740d47d14e6706e98d8bcdd157ffd9399a57b6ec0c84cbbfa05b3893b711d,703,NR_131221,312,SPRY4-IT1 | SPRY4‑IT1,2,3599 | 3600,ambiguous_multi_v2_id,False,True,True,,,6,esophageal squamous cell carcinoma | glioma | multiple sclerosis | nasopharyngeal carcinoma | osteosarcoma | pancreatic ductal adenocarcinoma,6,False,True

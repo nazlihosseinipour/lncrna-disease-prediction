@@ -19,6 +19,7 @@ echo "[1/2] Preparing leakage-free manifest (ALL sequence features, no SVD/GIP/L
 
 echo "[2/2] Within-version CV (rflda ipcarf rf) ..."
 "$PYTHON" scripts/run_inductive_within_cv.py \
+  --manifest inductive_inputs/feature_representations/feature_representation_manifest.csv \
   --models rflda ipcarf rf \
   --n-splits 10 \
   --threshold-mode youden \

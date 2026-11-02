@@ -1,0 +1,281 @@
+{
+  "schema": "shared_sequence_run_manifest/1",
+  "created_at_utc": "2026-09-28T09:31:20.621434+00:00",
+  "task": "Felipe V1/V2 shared-sequence paired 2x2 comparison (RF, IPCARF, RFLDA)",
+  "spec": "Reports/felipe_audit_2026-09-27/SHARED_SEQUENCE_SPEC_2026-09-28.md",
+  "results_root": "results/felipe_shared_sequence_2026-09-28/",
+  "population": {
+    "test_primary": "44 one-to-one shared sequences",
+    "test_sensitivity": "48 shared sequences",
+    "train_v1_rows": 307,
+    "train_v2_rows": 4078,
+    "labels": "73 shared disease concepts (config/felipe_basics_shared_73_diseases.csv)",
+    "features": "paper_sequence_542"
+  },
+  "inputs": {
+    "lncRNA_CIBCB2025-main/create_dataset/raw_data/sequences.csv": "56c0e35ffdf673e931e3d25431bd0921fec550c8c77f23a891318ecffefd9bcd",
+    "Data/corrected_inputs/v2_transcript_sequences/website_full_matrix.csv": "52c57c9896304d489c8a47dbb7f008ffc4d72c81b205365df671e45f687ca3c7",
+    "config/felipe_basics_transfer_73_manifest.csv": "7d8bce380476e9cb1d9945ed10b5187923ed29de5a3cd5017e31c2403acbce8c",
+    "config/felipe_basics_shared_73_diseases.csv": "1ad4419dd2c461cce209fc9886450953fcfad0dde2b937b80596dbc2a9c55bee",
+    "results/felipe_basics_2026-09-27/inputs/v1_paper_sequence_542_X.csv": "4a286310cf7beab36ef147961a7f6a064fc316594d16970a8b2b627157558604",
+    "results/felipe_basics_2026-09-27/inputs/v2_paper_sequence_542_X.csv": "a8e7cbdb02b3f79178eb212552f691622ed7eb6a52d2e442f95f4d7d6a85eb37",
+    "results/felipe_basics_2026-09-27/inputs/v1_shared_73_Y.csv": "a7740411475de52dbd780455601d5e28c62c4989a2db0f5d35b439bf094b4239",
+    "results/felipe_basics_2026-09-27/inputs/v2_shared_73_Y.csv": "39e1ab8d4d67f871a4e831318e6111c3414dad07b782fcfad1d7b9d5ee922a93"
+  },
+  "frozen_tables": {
+    "fit_time": [
+      "config/felipe_shared_sequence_frozen_sources.csv",
+      "b31514a44e534d453d52c8c60ea51779d08f13612020bdf652f52fb25722c46c"
+    ],
+    "scoring": [
+      "config/felipe_shared_sequence_scoring_frozen_sources.csv",
+      "2cbd504e49c38578ecade3f0299854d7d1d26446f5659bb857c34f7eaf80dece"
+    ],
+    "base": [
+      "config/felipe_frozen_sources.csv",
+      "61dd447d906db831f0fd36be5017a30a96548c58635c649164c0e2ecf9e19501"
+    ]
+  },
+  "code": {
+    "scripts/build_shared_sequence_cohort.py": "8abf49720dd6fb5210e0a1fc1f898157d8806b9a9bc125373844d7054fd28889",
+    "scripts/audit_shared_disease_map.py": "d7742d77480bf5711ac85c2a451c26318745bd2b2a66edba67b7214fc545d12e",
+    "scripts/run_felipe_shared_sequence_paired.py": "dcef3983de5cbe423120e9248537aec9a5dc8c59889f25e18eadfb688fbe9bff",
+    "scripts/score_felipe_shared_sequence.py": "7d146f474373035e4a2bf0e3342c058057f89d6e16f3eb539e53a1b23847ec1f",
+    "scripts/verify_felipe_shared_sequence.py": "65f7969855db2d5a7840bc2a0a4c2efec2248f875579f37b4c916f76c76fc017"
+  },
+  "cohort_manifest": [
+    "results/felipe_shared_sequence_2026-09-28/cohort/cohort_manifest.json",
+    "660f339b22532823ef1fff0c7c37162806a7b12f2b92c1d137e756d1e5f06465"
+  ],
+  "cohort_files": {
+    "cohort_manifest.json": "660f339b22532823ef1fff0c7c37162806a7b12f2b92c1d137e756d1e5f06465",
+    "cohorts.csv": "62a3fe3fdb839557396d385311700e9a675f6dc2edd72bf6f8805236c96b2cbf",
+    "correspondence.csv": "db67386615c83e25abb9a6576fbaccc58384ec2f93125ffad357670bf20f75bd",
+    "excluded_ids_v1.txt": "84a69be86f11844a6ba30716a7ab3b9b97001e953e7c250c7d14555cff43de39",
+    "excluded_ids_v2.txt": "3801eb51d66ff934419b961c6300a24e1e71cfdd51c0a4df59351fd9482e6721",
+    "fromserver_check.json": "03421112cf7883fb3338a83d465496655831554ae781bf8acb7258551c63ea5e",
+    "labels_v1.csv": "c375293b19eaec8a22368914ba54ca0346fb4e00bb431d8d9e4afdb0ad99b2aa",
+    "labels_v2_or.csv": "3dea66f0ed8a0b886395e9e5862993dfb7f746a4256c891fd368e139fe747edf",
+    "labels_v2_primary.csv": "1e86904b1bdad3993c4eec83ae38c47e5120fe50100724bcdb695787415dfdf5",
+    "test_X.csv": "2f244bf54c30bb44c24c5cbc1b3c2739e9efa412ad4af30c91966e37ffb414c4",
+    "train_ids_v1.txt": "478b2688139b778685b5c5878aca4ce28fb250a1e3fd5428531d52763dd85640",
+    "train_ids_v2.txt": "976170ac435f0d897f89136227f23f900a17a99730c5f950ef94d45cd8704fa5",
+    "v2_label_conflicts.csv": "e8e7bf8f7cf9082ebcacf4fbf71f3bc9dce6c1b35bdc6a32fc5bb0dcbb787bed"
+  },
+  "disease_map_audit": {
+    "disease_map_audit.csv": "2fdabbaa89e8a35ee052d25df80fe983405eb49c7cc9ee5172b353fa56aa6387",
+    "disease_map_audit.json": "a91902e73779f96480da061e66c52034df485c5799793ba339f09dd4f5c197c6",
+    "near_misses.csv": "e07ee509a42bc70f2775b58d386a4cbcc1579ac63ebeebd5225f585ece184a3d",
+    "or_combinations.csv": "5622f71deb30893d9cbb25ced89841f196f51ad008e348999ed9fc3621578c61"
+  },
+  "cells": [
+    {
+      "path": "results/felipe_shared_sequence_2026-09-28/paired/train_v1__shared73__paper_sequence_542__paper/ipcarf/shared48.contract.json",
+      "train_version": "v1",
+      "model": "ipcarf",
+      "n_train": 307,
+      "prediction_file_sha256": "e3926171a03ec6dfa81dea5e6d24c62f8a259518dab90c51dd2fa89035e44b78",
+      "contract_sha256": "a04ccc27936de09d85e211d67ca651238f4d0a11a6153e236aa55709c03ef456",
+      "test_x_sha256": "2f244bf54c30bb44c24c5cbc1b3c2739e9efa412ad4af30c91966e37ffb414c4",
+      "train_ids_sha256": "35d09073a3bc831dc772ee4ffe8925d8b21193600a6f15cae845f73d1bcf64f2",
+      "fitted_selection": {
+        "n_components": 8
+      },
+      "fit_seconds": 11.31607995799277,
+      "effective_params": {
+        "allow_pca_fallback": false,
+        "binary_mode": false,
+        "class": "IPCARF.ipcarf.IPCARF",
+        "inner_cv_folds": 5,
+        "inner_cv_scoring": "estimator_default_r2",
+        "n_components_grid": [
+          2,
+          4,
+          8,
+          16,
+          32,
+          64,
+          128
+        ],
+        "n_estimators": 150,
+        "random_state": 0,
+        "standardize": false
+      }
+    },
+    {
+      "path": "results/felipe_shared_sequence_2026-09-28/paired/train_v1__shared73__paper_sequence_542__paper/rf/shared48.contract.json",
+      "train_version": "v1",
+      "model": "rf",
+      "n_train": 307,
+      "prediction_file_sha256": "45702c1988fba25ae3e714d45c0696bcdb4ccd29f307a6f347eeb75d92c51177",
+      "contract_sha256": "5ae1b5500c900d9ac67ba8d8441bde041d059e98da83963ea3b5ad67cc8f7a3c",
+      "test_x_sha256": "2f244bf54c30bb44c24c5cbc1b3c2739e9efa412ad4af30c91966e37ffb414c4",
+      "train_ids_sha256": "35d09073a3bc831dc772ee4ffe8925d8b21193600a6f15cae845f73d1bcf64f2",
+      "fitted_selection": {},
+      "fit_seconds": 6.535926624987042,
+      "effective_params": {
+        "binary_mode": false,
+        "class": "RF.rf.RF",
+        "estimator": "sklearn.ensemble.RandomForestRegressor",
+        "max_features": "sklearn_default",
+        "n_estimators": 150,
+        "oob_score": false,
+        "random_state": 0
+      }
+    },
+    {
+      "path": "results/felipe_shared_sequence_2026-09-28/paired/train_v1__shared73__paper_sequence_542__paper/rflda/shared48.contract.json",
+      "train_version": "v1",
+      "model": "rflda",
+      "n_train": 307,
+      "prediction_file_sha256": "f44cef953de92019e1ac2bc49e38fb56c08abaedc7465f20dcd62df12924dbd3",
+      "contract_sha256": "6fc66403af6ae6c14acebcbf5ec6f821fe050a850732bf6f15aa1f5fbc02aaed",
+      "test_x_sha256": "2f244bf54c30bb44c24c5cbc1b3c2739e9efa412ad4af30c91966e37ffb414c4",
+      "train_ids_sha256": "35d09073a3bc831dc772ee4ffe8925d8b21193600a6f15cae845f73d1bcf64f2",
+      "fitted_selection": {
+        "best_n_features": 250
+      },
+      "fit_seconds": 45.41903750001802,
+      "effective_params": {
+        "binary_mode": false,
+        "class": "RFLDA.rflda.RFLDA",
+        "feature_step": 50,
+        "inner_cv_folds": 5,
+        "inner_cv_shuffle": true,
+        "n_estimators": 150,
+        "random_state": 0,
+        "selection_metric": "subset_accuracy"
+      }
+    },
+    {
+      "path": "results/felipe_shared_sequence_2026-09-28/paired/train_v2__shared73__paper_sequence_542__paper/ipcarf/shared48.contract.json",
+      "train_version": "v2",
+      "model": "ipcarf",
+      "n_train": 4078,
+      "prediction_file_sha256": "8c3f5306d0e1499882901722869a4d9bf4b1b1cefca22d681987ed113204e47c",
+      "contract_sha256": "039b87f170c364c120e97babcfae3c47d10c7a92596d78212dd9e6d16bb5a5b0",
+      "test_x_sha256": "2f244bf54c30bb44c24c5cbc1b3c2739e9efa412ad4af30c91966e37ffb414c4",
+      "train_ids_sha256": "0c3aa83b85d06c9be0e3f7e6d1acbba7cc2fd639edc19b5e2cd06608ec7213b8",
+      "fitted_selection": {
+        "n_components": 32
+      },
+      "fit_seconds": 163.40524970798288,
+      "effective_params": {
+        "allow_pca_fallback": false,
+        "binary_mode": false,
+        "class": "IPCARF.ipcarf.IPCARF",
+        "inner_cv_folds": 5,
+        "inner_cv_scoring": "estimator_default_r2",
+        "n_components_grid": [
+          2,
+          4,
+          8,
+          16,
+          32,
+          64,
+          128
+        ],
+        "n_estimators": 150,
+        "random_state": 0,
+        "standardize": false
+      }
+    },
+    {
+      "path": "results/felipe_shared_sequence_2026-09-28/paired/train_v2__shared73__paper_sequence_542__paper/rf/shared48.contract.json",
+      "train_version": "v2",
+      "model": "rf",
+      "n_train": 4078,
+      "prediction_file_sha256": "741094a6ebe5cbcb31c3f1af97277dd6f044adccf328d7982409cc7211c38b13",
+      "contract_sha256": "87ed53fc88cd4918ed01d0ade5734d6ed87bfaf3a22c3cfc99c4d07d98eb7219",
+      "test_x_sha256": "2f244bf54c30bb44c24c5cbc1b3c2739e9efa412ad4af30c91966e37ffb414c4",
+      "train_ids_sha256": "0c3aa83b85d06c9be0e3f7e6d1acbba7cc2fd639edc19b5e2cd06608ec7213b8",
+      "fitted_selection": {},
+      "fit_seconds": 106.475980874995,
+      "effective_params": {
+        "binary_mode": false,
+        "class": "RF.rf.RF",
+        "estimator": "sklearn.ensemble.RandomForestRegressor",
+        "max_features": "sklearn_default",
+        "n_estimators": 150,
+        "oob_score": false,
+        "random_state": 0
+      }
+    },
+    {
+      "path": "results/felipe_shared_sequence_2026-09-28/paired/train_v2__shared73__paper_sequence_542__paper/rflda/shared48.contract.json",
+      "train_version": "v2",
+      "model": "rflda",
+      "n_train": 4078,
+      "prediction_file_sha256": "71cf7c71589709e64c9dfbb8e9844737cb3108825fdb13635c051fcd618dabb3",
+      "contract_sha256": "92875372b1a43fdbfe262074c8c3bdf2a30c87dca2c056f9d0a946d137bb4779",
+      "test_x_sha256": "2f244bf54c30bb44c24c5cbc1b3c2739e9efa412ad4af30c91966e37ffb414c4",
+      "train_ids_sha256": "0c3aa83b85d06c9be0e3f7e6d1acbba7cc2fd639edc19b5e2cd06608ec7213b8",
+      "fitted_selection": {
+        "best_n_features": 350
+      },
+      "fit_seconds": 777.5609926250181,
+      "effective_params": {
+        "binary_mode": false,
+        "class": "RFLDA.rflda.RFLDA",
+        "feature_step": 50,
+        "inner_cv_folds": 5,
+        "inner_cv_shuffle": true,
+        "n_estimators": 150,
+        "random_state": 0,
+        "selection_metric": "subset_accuracy"
+      }
+    }
+  ],
+  "scores": {
+    "bootstrap_ci.csv": "8aa5e3a7ae80e011b8dceadc995d5fec3c66257a13936c208078096635869a5e",
+    "disease_definedness.csv": "5d8d80a597845fdb737416070546e6e25c8a947a1036174f94ae8ecd31e0873e",
+    "paired_differences.csv": "40618dde4693e7a9d5de552a8d475d69fe992954edd3da4fc558a07ada6687b0",
+    "per_disease.csv": "6bcad370950165d7bed766ac95592f33758848782ef85c7a20baf81f474baf1c",
+    "score_run.json": "d5e3b756bf4878f3504bbf2ccfeba947554c3aef27caf25842abfec23ab45bc2",
+    "summary.csv": "3688deab6b2d19611d00aa09c2613b56f2ebc9dc7e0b816275fd73c5239a0623"
+  },
+  "run_record": [
+    "results/felipe_shared_sequence_2026-09-28/run_records/20260928T091807401399Z_82b92d4f93bc.json"
+  ],
+  "verification": {
+    "post_restore": [
+      "results/felipe_shared_sequence_2026-09-28/verification_post_restore.json",
+      "55baeb2791e866b5e4ac8598c31768cee1ff009e1eb9258079411f5e157cc417"
+    ],
+    "pre_incident": [
+      "results/felipe_shared_sequence_2026-09-28/verification.json",
+      "1099f93ecd2e00edd5c44b04c12e37de055c4424394ea5e477458d233532ad8e"
+    ]
+  },
+  "protected_snapshot": [
+    "results/felipe_shared_sequence_2026-09-28/protected_before.sha256",
+    "fd73e9666069ae6e976f363f95a923b57bf24eecfa731278e3eaf0d49518811f"
+  ],
+  "evaluation": {
+    "lane": "primary_clean",
+    "threshold": 0.5,
+    "threshold_source": "constant_0.5",
+    "youden": "not computed",
+    "baseline": "training-population prevalence per disease",
+    "bootstrap": {
+      "B": 2000,
+      "seed": 20260928,
+      "unit": "sequence_sha256",
+      "interval": "percentile 2.5/97.5"
+    }
+  },
+  "commands": [
+    "scripts/build_shared_sequence_cohort.py --report-copy Reports/felipe_audit_2026-09-27/shared_sequence_correspondence.csv",
+    "scripts/audit_shared_disease_map.py",
+    "scripts/run_felipe_shared_sequence_paired.py --outdir results/felipe_shared_sequence_2026-09-28",
+    "scripts/score_felipe_shared_sequence.py --results-root R --cohort-dir R/cohort --outdir R/scores",
+    "scripts/verify_felipe_shared_sequence.py --results-root R --json-out R/verification_post_restore.json"
+  ],
+  "incidents": [
+    "SS16: accidental resume refit after scoring-table change; originals restored, refits kept under _rejected/20260928T0925_accidental_refit_supervisor_error"
+  ],
+  "report_files": {
+    "Reports/felipe_audit_2026-09-27/shared_sequence_correspondence.csv": "db67386615c83e25abb9a6576fbaccc58384ec2f93125ffad357670bf20f75bd",
+    "Reports/felipe_audit_2026-09-27/shared_sequence_transfer_table.csv": "eba7a22e81363c50cf0a49e4c7aab869ae96ff01897394f4ccd9cd2f631a7fc6"
+  }
+}

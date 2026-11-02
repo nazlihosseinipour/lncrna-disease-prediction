@@ -29,6 +29,14 @@ the following substantive ways:
   - constrains the PCA component grid to valid dimensions;
   - falls back to randomized PCA when IncrementalPCA fails.
 - `RFLDA/rflda.py`
+
+## Pse-in-One RNA property values
+
+`config/pse_in_one_rna_dcc_properties.csv` contains the 22 RNA dinucleotide
+property vectors distributed with Pse-in-One 1.0.6. They were exported from
+`Pse-in-One/data/dirna.data` in upstream commit
+`bd4f39e3d509a4b9367f0f657317e243fca6f11b` and retain the upstream GPL-3.0
+license. Upstream source: https://github.com/bioinformatics-hitsz/Pse-in-One
   - supports feature sets with fewer than 50 columns;
   - guarantees that Random Forest `max_features` is at least one.
 - `parse_results/evaluate.py`

@@ -1,0 +1,36 @@
+ You were right to stop the deletion.
+
+  The proposed submodule conversion would:
+
+  1. Remove the currently copied folder from the parent repository.
+  2. Immediately recreate the same path as a Git submodule.
+  3. Point it to your fork containing your adaptations.
+
+  The code would not be discarded, but the intermediate git rm looked destructive and was not explained clearly
+  enough. Nothing was removed.
+
+  I have now:
+
+  - Published your adaptations to your fork:
+    nazlihosseinipour/lncRNA_CIBCB2025
+
+  - Preserved the professor’s original Git history and fork relationship.
+  - Published adaptation code commit 9bfab69.
+  - Corrected the fork documentation in commit d650d53.
+  - Updated the main README.md to identify:
+      - the professor’s original repository;
+      - your adapted fork;
+      - the adaptation branch and commit;
+      - that experiment scripts require the adapted version.
+
+  - Updated THIRD_PARTY_CODE.md with a reproducible checkout command and a detailed list of your changes.
+
+  The original folder remains intact. The only unfinished decision is whether to convert it into a submodule. A
+  submodule makes GitHub display the directory as a linked repository, but it changes how contributors clone the
+  project. Keeping it vendored is simpler, while the new documentation and GitHub fork already make authorship
+  and modifications explicit.
+
+  I will only perform the submodule conversion if you confirm you want that specific behavior.
+
+  Token usage: total=339,848 input=332,335 (+ 1,885,952 cached) output=7,513 (reasoning 1,707)
+To continue this session, run codex resume 019f9056-296d-7be3-a405-e6c96db1e8b0

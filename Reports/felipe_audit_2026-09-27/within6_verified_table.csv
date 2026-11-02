@@ -1,0 +1,13 @@
+version,model,mode,status,lane,threshold_source,n_rna,n_labels,auroc,auprc,f1,precision,recall,pooled_auroc,pooled_auprc
+v1,rf,fixed,verified,primary_clean,constant_0.5,355,44,0.628 ± 0.050,0.087 ± 0.025,0.013 ± 0.022,0.065,0.008,0.625,0.077
+v1,ipcarf,fixed,verified,primary_clean,constant_0.5,355,44,0.662 ± 0.033,0.100 ± 0.022,0.015 ± 0.020,0.079,0.009,0.656,0.087
+v1,rflda,fixed,verified,primary_clean,constant_0.5,355,44,0.639 ± 0.043,0.087 ± 0.014,0.008 ± 0.013,0.046,0.005,0.630,0.080
+v2,rf,fixed,verified,primary_clean,constant_0.5,4130,436,0.878 ± 0.020,0.080 ± 0.010,0.010 ± 0.004,0.306,0.005,0.877,0.076
+v2,ipcarf,fixed,verified,primary_clean,constant_0.5,4130,436,0.881 ± 0.019,0.081 ± 0.009,0.004 ± 0.004,0.270,0.002,0.880,0.078
+v2,rflda,fixed,verified,primary_clean,constant_0.5,4130,436,0.882 ± 0.017,0.083 ± 0.009,0.008 ± 0.005,0.259,0.004,0.881,0.079
+v1,rf,paper_youden,verified,paper_comparison,evaluated_fold_labels,355,44,0.628 ± 0.050,0.087 ± 0.025,0.204 ± 0.039,0.143,0.396,0.625,0.077
+v1,ipcarf,paper_youden,verified,paper_comparison,evaluated_fold_labels,355,44,0.662 ± 0.033,0.100 ± 0.022,0.244 ± 0.036,0.174,0.482,0.656,0.087
+v1,rflda,paper_youden,verified,paper_comparison,evaluated_fold_labels,355,44,0.639 ± 0.043,0.087 ± 0.014,0.206 ± 0.029,0.143,0.404,0.630,0.080
+v2,rf,paper_youden,verified,paper_comparison,evaluated_fold_labels,4130,436,0.878 ± 0.020,0.080 ± 0.010,0.109 ± 0.010,0.062,0.458,0.877,0.076
+v2,ipcarf,paper_youden,verified,paper_comparison,evaluated_fold_labels,4130,436,0.881 ± 0.019,0.081 ± 0.009,0.102 ± 0.014,0.058,0.441,0.880,0.078
+v2,rflda,paper_youden,verified,paper_comparison,evaluated_fold_labels,4130,436,0.882 ± 0.017,0.083 ± 0.009,0.101 ± 0.013,0.057,0.471,0.881,0.079

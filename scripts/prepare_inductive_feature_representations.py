@@ -443,6 +443,50 @@ def filter_aligned_labels(
     return y[["ID"] + keep].copy(), counts.loc[keep], dropped
 
 
+def preserve_aligned_inputs(
+    x_aligned: pd.DataFrame,
+    y_aligned: pd.DataFrame,
+    *,
+    source_ids: list[str],
+    label_cols: list[str],
+    context: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series, pd.DataFrame]:
+    """Return aligned inputs unchanged, failing if alignment removed or reordered rows."""
+    aligned_ids = x_aligned["sample_id"].astype(str).tolist()
+    if aligned_ids != source_ids:
+        aligned_set = set(aligned_ids)
+        source_set = set(source_ids)
+        missing = [sample_id for sample_id in source_ids if sample_id not in aligned_set]
+        extra = [sample_id for sample_id in aligned_ids if sample_id not in source_set]
+        raise ValueError(
+            f"{context}: preservation mode would change source rows. Expected "
+            f"{len(source_ids)} IDs in source order, got {len(aligned_ids)}; "
+            f"missing={missing[:5]}, extra={extra[:5]}."
+        )
+    sequence_audit = pd.DataFrame(
+        columns=[
+            "representative_id",
+            "member_ids",
+            "group_size",
+            "conflicting_label_count",
+            "sequence_sha256",
+        ]
+    )
+    feature_audit = pd.DataFrame(
+        columns=["retained_feature", "dropped_duplicate_feature"]
+    )
+    kept_counts = y_aligned[label_cols].apply(pd.to_numeric, errors="raise").sum(axis=0)
+    dropped_labels = pd.DataFrame(columns=["label", "aligned_positive_count"])
+    return (
+        x_aligned.copy(),
+        y_aligned.copy(),
+        sequence_audit,
+        feature_audit,
+        kept_counts,
+        dropped_labels,
+    )
+
+
 def make_splits(
     x: pd.DataFrame, y: pd.DataFrame, n_splits: int, random_state: int
 ) -> pd.DataFrame:
@@ -765,6 +809,13 @@ def parse_args() -> argparse.Namespace:
         help="Label filter rule: 'gt' means > min-positives, 'ge' means >= min-positives.",
     )
     parser.add_argument(
+        "--preserve-rows-and-columns",
+        action="store_true",
+        help="Preserve every source row, feature column, and label column. Fail if "
+             "feature availability or ID alignment would remove a row. This disables "
+             "sequence collapsing, duplicate-feature removal, and label-frequency filtering.",
+    )
+    parser.add_argument(
         "--n-splits",
         type=int,
         default=10,
@@ -852,19 +903,39 @@ def main() -> None:
                 context=f"{version}/{feature_set}",
             )
 
-            x_out, y_out, sequence_audit = collapse_identical_sequences(
-                x_aligned, y_aligned, sequences
-            )
-            x_out, feature_audit = drop_duplicate_feature_columns(x_out)
-            y_out, kept_counts, dropped_labels = filter_aligned_labels(
-                y_out, args.min_positives, args.keep_rule
-            )
+            if args.preserve_rows_and_columns:
+                (
+                    x_out,
+                    y_out,
+                    sequence_audit,
+                    feature_audit,
+                    kept_counts,
+                    dropped_labels,
+                ) = preserve_aligned_inputs(
+                    x_aligned,
+                    y_aligned,
+                    source_ids=label_ids_in_order,
+                    label_cols=label_cols,
+                    context=f"{version}/{feature_set}",
+                )
+            else:
+                x_out, y_out, sequence_audit = collapse_identical_sequences(
+                    x_aligned, y_aligned, sequences
+                )
+                x_out, feature_audit = drop_duplicate_feature_columns(x_out)
+                y_out, kept_counts, dropped_labels = filter_aligned_labels(
+                    y_out, args.min_positives, args.keep_rule
+                )
 
             if x_out["sample_id"].astype(str).tolist() != y_out["ID"].astype(str).tolist():
                 raise ValueError(f"{version}/{feature_set}: final X/Y IDs are not aligned.")
 
             feature_key = sanitize_feature_key(feature_set)
-            suffix = f"{args.keep_rule}{args.min_positives}"
+            suffix = (
+                "unfiltered"
+                if args.preserve_rows_and_columns
+                else f"{args.keep_rule}{args.min_positives}"
+            )
             x_path = outdir / f"{version}_{feature_key}_X.csv"
             y_path = outdir / f"{version}_{feature_key}_Y_{suffix}.csv"
             x_out.to_csv(x_path, index=False)
@@ -883,8 +954,21 @@ def main() -> None:
                 splits = make_splits(x_out, y_out, args.n_splits, args.random_state)
                 splits.to_csv(split_path, index=False)
 
+            def project_path(path: Path) -> str:
+                try:
+                    return path.resolve().relative_to(PROJECT_ROOT.resolve()).as_posix()
+                except ValueError:
+                    return path.resolve().as_posix()
+
+            command_x_path = Path(project_path(x_path))
+            command_y_path = Path(project_path(y_path))
+            command_split_path = (
+                Path(project_path(split_path))
+                if split_path is not None
+                else Path("<generate_splits_first>")
+            )
             rflda_cmd, ipcarf_cmd = build_run_commands(
-                x_path, y_path, split_path or Path("<generate_splits_first>")
+                command_x_path, command_y_path, command_split_path
             )
 
             manifest_rows.append(
@@ -894,9 +978,14 @@ def main() -> None:
                     "feature_key": feature_key,
                     "domains": "+".join(spec.domain for spec in specs),
                     "components": "+".join(spec.feature_name for spec in specs),
-                    "x_path": x_path.as_posix(),
-                    "y_path": y_path.as_posix(),
-                    "split_path": "" if split_path is None else split_path.as_posix(),
+                    "x_path": project_path(x_path),
+                    "y_path": project_path(y_path),
+                    "split_path": "" if split_path is None else project_path(split_path),
+                    "preprocessing_mode": (
+                        "preserve_rows_and_columns"
+                        if args.preserve_rows_and_columns
+                        else "aligned_filtered"
+                    ),
                     "n_samples": int(x_out.shape[0]),
                     "n_features": int(x_out.shape[1] - 1),
                     "n_labels": int(y_out.shape[1] - 1),
@@ -925,9 +1014,9 @@ def main() -> None:
                     "best_label_width_block_exact_row_fraction": float(
                         target_audit["best_label_width_block_exact_row_fraction"]
                     ),
-                    "duplicate_sequence_audit": sequence_audit_path.as_posix(),
-                    "duplicate_feature_audit": feature_audit_path.as_posix(),
-                    "dropped_label_audit": dropped_labels_path.as_posix(),
+                    "duplicate_sequence_audit": project_path(sequence_audit_path),
+                    "duplicate_feature_audit": project_path(feature_audit_path),
+                    "dropped_label_audit": project_path(dropped_labels_path),
                     "rflda_command": rflda_cmd,
                     "ipcarf_command": ipcarf_cmd,
                 }

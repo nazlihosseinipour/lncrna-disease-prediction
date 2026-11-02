@@ -29,3 +29,13 @@ inductive_inputs/
 results/
 Final_output/
 final-output/
+
+# Local-only: agent state, scratch, server downloads, large corrected inputs
+.claude/
+.unlazy/
+tmp/
+outputs/
+fromserver/
+for claude/
+Data/corrected_inputs/
+*.pdf
